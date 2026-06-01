@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-For full architecture notes see [`Docs/CLAUDE.md`](Docs/CLAUDE.md). This file summarises the essentials.
+For exhaustive per-component notes see [`Docs/CLAUDE.md`](Docs/CLAUDE.md).
 
 ## Project
 
@@ -54,21 +54,52 @@ All commands read/write under `~/Documents/<STAN_CASES>/<model>/`:
 
 ### Output post-processing (raw vs clean)
 
-cmdstan emits raw CSV (comment headers, one file per chain). The Support layer cleans it up using a `_raw` / `.clean` filename split — e.g. `<model>_optimize.csv` (raw, kept for `laplace mode=`) vs `<model>.optimize.csv` (clean). See `Docs/CLAUDE.md` for the full table.
+cmdstan emits raw CSV (comment headers, one file per chain). The Support layer cleans it up:
+
+| Method | Raw (from cmdstan) | Clean (post-processed) |
+|---|---|---|
+| sample | `<model>_output_[1..4].csv` | `<model>.samples.csv` |
+| stansummary | `<model>_stansummary.csv` | `<model>.stansummary.csv` |
+| optimize | `<model>_optimize.csv` | `<model>.optimize.csv` |
+| pathfinder | `<model>_pathfinder.csv` | `<model>.pathfinder.csv` |
+| laplace | `<model>_laplace.csv` | `<model>.laplace.csv` |
+
+The raw/clean split is load-bearing for `laplace`: cmdstan needs `<model>_optimize.csv` to carry the `# method = optimize` header as its `mode=` input. Overwriting it in place (as the old code did) destroyed that header. `ReplaceNanByNil.swift` handles cmdstan's literal `nan` tokens during CSV→JSON conversion.
+
+### Subcommands
+
+- `compile` — `OptionsCompile` flags (`-V`, `-I`, `--cmdstan`, `--model`, trailing `values` passed through to make).
+- `sample` — defaults `num_chains=4 num_samples=1000`; always produces a clean samples file; by default also runs stansummary. Uses `OptionsSample` (adds `-S/--nosummary`).
+- `optimize`, `pathfinder`, `laplace`, `stansummary`, `csv2json`, `dsl2stan`, `alist2dsl`, `stancode` — all use `OptionsLimited`.
+- `laplace` — auto-runs `stanOptimize` when `<model>_optimize.csv` is missing or lacks the cmdstan `#` header (one-byte peek via `looksLikeRawOptimizeOutput`), then feeds that raw file via `mode=`.
+- `csv2json` — reads `Preliminaries/<model>.csv` + `Results/<model>.stan`, writes `Results/<model>.data.json`. Validates every row-data variable in the `.stan` schema is present in the CSV; derives `N` and `N_<col>` cardinalities; fails loudly on `NA` (`Csv2JsonError.naValue`).
+- `dsl2stan` — reads `Preliminaries/*.ulam.swift`, shells out to `swiftc` to compile and run it, captures stdout into `Results/<model>.stan`. Requires `$STAN_PROJECT_ROOT` (defaults to a developer fallback path).
+- `alist2dsl` — reads `Preliminaries/<model>.alist.R`, runs lexer → parser → lowering → classify → emitter, writes a runnable `@main` `<Model>.ulam.swift` to `Preliminaries/`. McElreath's "first `~` is the likelihood" convention drives role assignment.
+- `stancode` — in-process fast path: same alist parser chain as `alist2dsl`, but the classified AST flows through `AlistToUlamModel.build(_:)` directly to the `stancode(_:)` generator, writing `Results/<model>.stan` without invoking `swiftc`.
+- `ulam` (V2.1) — chains `stancode`-or-`dsl2stan` → `csv2json` → `compile` → `sample` with make-style staleness checks (`isStale(input:output:)`) per step. Prefers `alist2dsl` path when `Preliminaries/<model>.alist.R` exists.
+- `test` — drives `compile → sample → optimize → pathfinder` on `~/Documents/StanCases/bernoulli/`.
+
+Trailing positional `<values>` are passed verbatim to cmdstan (`num_chains=4`, `save_iterations=true`, etc.) using cmdstan's `key=value` syntax.
+
+### Bootstrap install (`-I`)
+
+`Helpers/CreateDotStanModelFile.swift` and `Helpers/CreateDotJsonDataFile.swift` write a bundled bernoulli example into `Results/` so a fresh checkout has something to compile. `compile -I` installs `<model>.stan`; `sample -I` installs `<model>.data.json`. (`Helpers/` is distinct from `Support/` — the latter contains post-processing utilities.)
 
 ### Ulam module (`Sources/SwiftStan/Ulam/`)
 
 Swift port of McElreath's `ulam()`. Sub-packages:
-- `AST/` — canonical AST types (`Statement`, `Distribution`, `UlamModel`, etc.)
+- `AST/` — canonical AST types (`Statement`, `Distribution`, `UlamModel`, `Truncation`, `LinkFunction`, `ExpressionNode`)
 - `Builder/` — `@resultBuilder StanModelBuilder` + DSL nodes (`Likelihood`, `Prior`, `VaryingPrior`, `VectorPrior`, `Link`, `Deterministic`)
-- `Generator/` — `StanCodeGenerator` (public `stancode(_:) throws -> String`), `BlockEmitter`, `DataInference`, `DistributionCatalog`, recursive-descent `ExpressionParser`
-- `Data/` — `DataMarshaller` (hand-rolled JSON writer; emits clean `Double` formatting)
+- `Generator/` — `StanCodeGenerator` (public `stancode(_:) throws -> String`), `BlockEmitter`, `DataInference`, `DistributionCatalog`, recursive-descent `ExpressionParser`/`ExpressionLexer`
+- `Data/` — `DataMarshaller` (hand-rolled JSON writer; emits clean `Double` formatting; also emits `<countSymbol>: max(values)` for Phase-5 index columns)
 - `Alist/` — R `alist()` parser → two downstream targets: `AlistEmitter` (Swift smoke driver for `dsl2stan`) and `AlistToUlamModel` (in-process `UlamModel` for `stancode`)
 - `Ulam.swift` — two orchestrators: `ulam(_:name:cmdstan:verbose:arguments:)` (V1 in-process) and `ulamPipeline(model:cmdstan:verbose:arguments:)` (V2.1 file-based CLI path with make-style staleness checks)
 
-### `laplace` subcommand note
+Two `stancode` entry points exist on the Swift API: `stancode(_ model: UlamModel) throws -> String` (pure) and `stancode(model: String, verbose: Bool) throws -> URL` (file-based). The `model:` label disambiguates.
 
-Requires a raw optimize output file with the `# method = optimize` header intact. The split filename convention (raw `_optimize.csv` vs clean `.optimize.csv`) is what keeps that header stable across repeated runs. See `Docs/CLAUDE.md` for details.
+### Sibling project
+
+[SwiftStats](https://github.com/SwiftProjectOrganization/SwiftStats) consumes the clean `*.samples.csv` / `*.stansummary.csv` files this CLI produces. The `~/Documents/<STAN_CASES>/<model>/Results/` layout is the contract between the two — don't rename output files without updating both.
 
 ## Code style
 

@@ -12,6 +12,7 @@ struct SwiftStan: ParsableCommand {
   // Customize your command's help and subcommands by implementing the
   // `configuration` property.
   static let configuration = CommandConfiguration(
+    commandName: "swiftstan",
     // Optional abstracts and discussions are used for help output.
     abstract: "A wrapper for running cmdstan.",
     

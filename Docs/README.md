@@ -54,11 +54,12 @@ This project is work in progress!!! Work still to be done can be found in [TODO]
   
   1. By default `'ulam'` prefers the fast in-process `stancode` path when an `.alist.R` is present.                          
   2. `ulam` falls back to `dsl2stan` against a hand-authored smoke driver.
-  3. As with building a Stan binary during `compile`, all commands only operate when the input file lat modification timstamp is newer than the corresponding output timestamp.  
+  3. As with building a Stan binary during `compile`, all commands only operate when the input file's modification timstamp is newer than the corresponding output timestamp.  
   4. All of these commands operate on a set of files stored in `"~/Documents/<STAN_CASES>/..."`.
   5. The <STAN_CASES> enviroment variable specifies the actual location, by default this is `'StanCases'`.
   6. The cmdstan pipeline only uses files in `"~/Documents/<STAN_CASES>/Results"`.
   7. The ulam pipeline looks for files in `"~/Documents/<STAN_CASES>/Preliminaries"`. Produced files end up in either Preliminaries (`"<Model>.ulam.swift"`) or in Result ( `"<model>.stan"` and `"<model>.data.json"`.
+  8. Run `csv2json` preferably after a .stan file has been set up. In that case the .data.json file reflects what is needed. It also adds 'N', the number of observations.
 
 
 ## Working environment  

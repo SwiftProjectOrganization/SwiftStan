@@ -21,7 +21,7 @@ public func sample(model: String,
     args.append("num_samples=1000")
   }
 
-  let fileManager = FileManager.default
+    _ = FileManager.default
   let paths = casePaths(for: model)
   let dirUrl = paths.results
 

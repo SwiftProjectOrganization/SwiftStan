@@ -50,7 +50,7 @@ Quality-of-life items not gated on a particular phase.
 
 Not strictly part of the Ulam port but tracked since they consume its output.
 
-- [ ] **stansummary `num_chains` assumption.** The pipeline currently hard-codes `num_chains=4` in `Commands/Sample.swift`. Logged in the original `README.md`'s "To do" section. Should generalise once a model wants different chain counts.
+- [x] ✅ **stansummary `num_chains` assumption** — shipped 2026-06-02. Replaces the hard-coded `_output_1..4.csv` loops in `Methods/RunStanSummary.swift` and `Support/GetSampleResults.swift` with a `chainOutputFiles(dirUrl:modelName:)` glob that returns every `<model>_output*.csv` cmdstan wrote, sorted numerically by chain id (so chain 10+ doesn't reorder ahead of single-digit chains; also includes the `_output.csv` no-suffix form cmdstan uses for `num_chains=1`). `Methods/StanSample.swift` wipes stale chain files before each run so a previous-run's higher chain count can't bleed extras into the post-sample glob. Unit-tested for double-digit ordering and the single-chain form.
 
 
 ## References

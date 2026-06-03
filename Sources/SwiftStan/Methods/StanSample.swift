@@ -20,6 +20,13 @@ public func stanSample(dirUrl: URL,
     return ("","Input file \(binaryPath).data.json not found.")
   }
 
+  // 2026-06-02: wipe stale `<model>_output*.csv` from any previous run
+  // so a higher `num_chains` value doesn't bleed extra chains into the
+  // post-sample glob in `getSampleResult` / `stanSummary`.
+  for stale in chainOutputFiles(dirUrl: dirUrl, modelName: modelName) {
+    try? fileManager.removeItem(at: stale)
+  }
+
   var args = ["sample"]
   args.append(contentsOf: arguments)
   // 2026-06-02: auto-pick up a sibling `<model>.init.json` written by

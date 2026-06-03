@@ -36,7 +36,12 @@ This file is a forward-looking checklist of work that's planned but not yet sche
   - **Alist parser support** for `a[country, region] ~ dnorm(...)` in `.alist.R` files. Today only the Swift DSL exposes the surface; alist parser extension is a follow-up.
   - **Non-canonical `a[country][region]` RHS shape** — explicitly rejected; not valid Stan for matrix parameters.
 
-- [ ] Crossed random effects with correlations — `LKJCorrCholeskyPrior` + `VaryingVectorPrior` are already in place; what remains is the multi-grouping index wiring and any alist-side `dlkjcorr` alias (see above).
+- [x] ✅ **Crossed random effects with correlations (DSL)** — shipped 2026-06-03. Pure-DSL crossed effects work out of the box: distinct cardinality symbols like `J_subject` and `J_item` supplied as `.scalarInt(...)` data entries classify and emit two separate `VaryingVectorPrior` / `LKJCorrCholeskyPrior` / `VectorPrior` triples without source changes. The existing `multipleCardinalitySymbolsAmbiguous` guard only fires when a Phase-6 data column (`.realVector` / `.realCovMatrix` / `.realArrayVector`) needs disambiguating — the cafe-style `scalarInt`-fallback path scales cleanly. New golden test `varyingVectorCrossedEffectsMatchesGolden` covers the brms-style `y ~ x + (1+x|subject) + (1+x|item)` shape with N=6, two grouping levels, and the loop-emitted `mu = ab_subject[subject][1] + ab_subject[subject][2]*x + ab_item[item][1] + ab_item[item][2]*x` mean. Error message on the Phase-6 collision path widened to clarify the scalarInt-bound case is supported. Deferred:
+
+  - **Alist-side crossed effects.** `AlistClassify.swift varyingVectorLengthSymbol = "J"` is hard-coded; two `c(...)[subject]` + `c(...)[item]` lines in the same `.alist.R` would collide on the shared `"J"` bucket. Fix: replace the constant with a per-grouping `J_<indexedBy>` helper and thread through the four use sites (lines 100, 101, 134/147, 173). Includes pairing the `lkjCorrCholeskyPrior` arm with its companion `dmvnormchol` line to pick up the right group's `J`.
+  - **3+ crossed groupings** — path scales naturally; no golden ships today.
+  - **Crossed-with-nested combinations** (e.g. nested `subject` inside `class`, crossed with `item`).
+  - **brms `(1 + x | group)` shorthand** — would need new alist syntax that expands to the existing primitives.
 
 
 ## 2. Known limitations / polish (any time)

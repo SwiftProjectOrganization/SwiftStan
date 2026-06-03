@@ -1009,6 +1009,7 @@ Each demo is also tested as a round-trip golden in `Tests/SwiftStanTests/UlamGen
 | `nestedGroupingsMatchesGolden`               | `NestedVaryingPrior` + parser `a[i, j]` end-to-end golden |
 | `nestedVaryingPriorRejectsThreeDimensions`   | v1 arity gate on `indexedBy.count == 2` |
 | `parser_parsesTwoArgSubscript`               | Lexer/parser support for `a[i, j]` |
+| `varyingVectorCrossedEffectsMatchesGolden`   | Crossed `(1+x\|subject) + (1+x\|item)` shape — two `VaryingVectorPrior` + `LKJCorrCholeskyPrior` + `VectorPrior` triples with distinct `J_subject`/`J_item` cardinalities |
 
 All under `Tests/SwiftStanTests/`.
 

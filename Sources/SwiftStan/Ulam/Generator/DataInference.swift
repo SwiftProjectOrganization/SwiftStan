@@ -192,7 +192,7 @@ enum DataInferenceError: Error, CustomStringConvertible {
     case .multivariateTruncationUnsupported(let symbol):
       return "ulam: '\(symbol)' uses a multivariate distribution with truncation — Stan's `T[...]` syntax only supports univariate distributions"
     case .multipleCardinalitySymbolsAmbiguous(let symbols):
-      return "ulam: model declares multiple Phase-6 cardinality symbols (\(symbols.joined(separator: ", "))) — v1 supports a single symbol per model; bind each Phase-6 column to one symbol via VectorPrior(length:) once"
+      return "ulam: a Phase-6 data column (vector / cov_matrix / array-of-vectors) appears in a model that declares multiple cardinality symbols (\(symbols.joined(separator: ", "))) — v1 supports a single symbol per Phase-6 column. Crossed random effects with multiple `J_<group>` symbols are fine when each symbol is supplied as a `.scalarInt(...)` data entry (no Phase-6 column to disambiguate)."
     case .cardinalityLengthMismatch(let symbol, let expected, let column, let found):
       return "ulam: column '\(column)' has length \(found) but cardinality symbol '\(symbol)' is bound to \(expected)"
     case .nonCenteredRequiresNormal(let name):

@@ -80,4 +80,10 @@ public enum Distribution: Hashable, Sendable {
   case orderedLogistic(_ eta: DistributionArg, _ cutpoints: DistributionArg)
   // Ordered probit — same structure, probit link instead of logit.
   case orderedProbit(_ eta: DistributionArg, _ cutpoints: DistributionArg)
+  // Dirichlet (2026-06-02) — multivariate prior on a simplex parameter.
+  // `alpha` is a vector-typed symbol giving the per-entry concentration
+  // (uniform `rep_vector(2, K)` is a common weakly-informative choice).
+  // The receiving parameter must be declared as `simplex[K]` via a
+  // companion `SimplexPrior` node.
+  case dirichlet(_ alpha: DistributionArg)
 }

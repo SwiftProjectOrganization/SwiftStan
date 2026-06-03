@@ -152,6 +152,9 @@ enum BlockEmitter {
         // The K-1 size form renders Stan's bracketed expression form
         // verbatim — Stan's parser accepts the literal subtraction.
         lines.append("  ordered[\(dim)-1] \(name);")
+      } else if let len = inferred.simplexParameters[name] {
+        // Monotonic effects (2026-06-02): `simplex[<length>] <name>;`.
+        lines.append("  simplex[\(len)] \(name);")
       } else {
         lines.append("  real\(constraint) \(name);")
       }
@@ -240,6 +243,13 @@ enum BlockEmitter {
                                  inferred: inferred,
                                  matrixDataColumns: matrixDataColumns)
 
+    // Monotonic effects (2026-06-02): pair each MonotonicEffect with its
+    // target Link/Deterministic. The detection consumes the original
+    // assignment statement so it doesn't emit its plain vectorised form;
+    // a single combined per-row for-loop replaces it below.
+    let monoPlan = detectMonotonicLoops(statements: statements,
+                                        inferred: inferred)
+
     // Declare derived locals up front — except those promoted into the
     // SUR loop body as a `row_vector[<J>] <name>;` local.
     for name in inferred.derived where !surPlan.localMeanNames.contains(name) {
@@ -272,6 +282,10 @@ enum BlockEmitter {
       // per-row pair — they're emitted together as a for-loop block
       // after the main walk.
       if surPlan.consumedStatements.contains(statementIndex) { continue }
+      // Monotonic effects (2026-06-02): skip the consumed
+      // Link/Deterministic; its augmented form is emitted as a
+      // combined for-loop into the `assignments` bucket below.
+      if monoPlan.consumedStatements.contains(statementIndex) { continue }
       switch statement {
       case .link(let function, let lhs, let rhs):
         switch try vectorisationStrategy(for: statement,
@@ -397,10 +411,29 @@ enum BlockEmitter {
         // separate `Prior(<name>, ...)` statement that Stan vectorises
         // automatically over the ordered vector.
         break
+      case .simplexPrior:
+        // Monotonic effects (2026-06-02): declaration-only — the user
+        // attaches `Prior(<name>, .dirichlet(<alpha>))` separately.
+        break
+      case .monotonicEffect:
+        // Monotonic effects: consumed by the detection pass above —
+        // its per-row contribution is folded into a combined for-loop
+        // assignment for the matching Link/Deterministic.
+        break
       case .likelihood(let lhs, let dist, let trunc, let useLpdf):
         likelihoods.append(try emitSampling(lhs: lhs, distribution: dist,
                                             truncation: trunc, useLpdf: useLpdf))
       }
+    }
+
+    // Monotonic effects (2026-06-02): emit each detected combined
+    // for-loop in place of the suppressed Link/Deterministic. Inserted
+    // into the assignments bucket so derived locals are populated
+    // before priors and likelihoods that consume them.
+    for loop in monoPlan.loops {
+      assignments.append("  for (i in 1:N) {")
+      assignments.append("    \(loop.targetLhs)[i] = \(loop.combinedBody);")
+      assignments.append("  }")
     }
 
     lines.append(contentsOf: assignments)
@@ -489,6 +522,90 @@ enum BlockEmitter {
                            localMeanNames: localMeans)
   }
 
+  // MARK: - Monotonic-effects helpers (2026-06-02)
+
+  /// One detected monotonic-effect plan: the Link/Deterministic whose
+  /// LHS is `targetLhs`, augmented in place with one or more
+  /// `<scale> * sum(<simplex>[1:<predictor>[i]])` terms.
+  struct MonoLoop {
+    let targetLhs: String
+    let combinedBody: String      // base RHS in loop form + monotonic terms
+  }
+
+  struct MonoEmissionPlan {
+    let loops: [MonoLoop]
+    let consumedStatements: Set<Int>
+  }
+
+  /// Pair every `MonotonicEffect` with the Link/Deterministic whose LHS
+  /// is `targetLhs`; render the base RHS via `renderLoopBody` and
+  /// append the monotonic term. Multiple `MonotonicEffect`s targeting
+  /// the same LHS chain their contributions into a single for-loop.
+  private static func detectMonotonicLoops(
+    statements: [Statement],
+    inferred: InferredModel
+  ) -> MonoEmissionPlan {
+    let specs = inferred.monotonicEffects
+    if specs.isEmpty { return MonoEmissionPlan(loops: [], consumedStatements: []) }
+
+    let knownVectorParameters = Set(inferred.vectorParameters.keys)
+      .union(inferred.nonCenteredVarying.keys)
+      .union(inferred.gaussianProcessGP.keys)
+    let knownIndexColumns = Set(inferred.indexColumns.keys)
+    let knownDataVectors = dataVectorNames(inferred)
+
+    // Group specs by target.
+    var specsByTarget: [String: [MonotonicSpec]] = [:]
+    for spec in specs {
+      specsByTarget[spec.targetLhs, default: []].append(spec)
+    }
+
+    var loops: [MonoLoop] = []
+    var consumed: Set<Int> = []
+    for (target, targetSpecs) in specsByTarget {
+      // Locate the matching Link/Deterministic and capture its index.
+      for (idx, stmt) in statements.enumerated() {
+        switch stmt {
+        case .link(let fn, let lhs, let rhs) where lhs == target:
+          guard let node = try? rhs.parsed() else { continue }
+          let base = renderLoopBody(node,
+                                    knownDataVectors: knownDataVectors,
+                                    knownIndexColumns: knownIndexColumns,
+                                    loopVar: "i")
+          let monoTerms = targetSpecs.map(monotonicTerm).joined(separator: " + ")
+          let combined = applyInverseLink(fn, to: "\(base) + \(monoTerms)")
+          loops.append(MonoLoop(targetLhs: target, combinedBody: combined))
+          consumed.insert(idx)
+        case .deterministic(let lhs, let rhs) where lhs == target:
+          guard let node = try? rhs.parsed() else { continue }
+          let base = renderLoopBody(node,
+                                    knownDataVectors: knownDataVectors,
+                                    knownIndexColumns: knownIndexColumns,
+                                    loopVar: "i")
+          let monoTerms = targetSpecs.map(monotonicTerm).joined(separator: " + ")
+          let combined = "\(base) + \(monoTerms)"
+          loops.append(MonoLoop(targetLhs: target, combinedBody: combined))
+          consumed.insert(idx)
+          // We've also consumed the MonotonicEffect statements themselves;
+          // they're declaration-only otherwise.
+          _ = knownVectorParameters // silence unused warning if any
+        default: break
+        }
+      }
+    }
+    // Mark the MonotonicEffect statements as consumed too (model-block
+    // emission is a no-op for them, so this is bookkeeping).
+    for (idx, stmt) in statements.enumerated() {
+      if case .monotonicEffect = stmt { consumed.insert(idx) }
+    }
+    return MonoEmissionPlan(loops: loops, consumedStatements: consumed)
+  }
+
+  /// `<scale> * sum(<name>[1:<predictor>[i]])` per spec.
+  private static func monotonicTerm(_ spec: MonotonicSpec) -> String {
+    "\(spec.scale) * sum(\(spec.name)[1:\(spec.predictor)[i]])"
+  }
+
   // MARK: - Phase 4 helpers
 
   enum VectorisationStrategy { case vectorise, loop }
@@ -519,7 +636,7 @@ enum BlockEmitter {
     case .likelihood, .prior, .varyingPrior, .vectorPrior,
          .matrixPrior, .covMatrixPrior, .lkjCorrCholeskyPrior,
          .wishartPrior, .varyingVectorPrior, .gaussianProcessPrior,
-         .orderedCutpointsPrior:
+         .orderedCutpointsPrior, .simplexPrior, .monotonicEffect:
       // Distribution args are scalars in the current AST (literal or
       // symbol). For varying / vector / matrix / cov_matrix /
       // chol-factor / varying-vector / GP priors, the LHS is a vector-
@@ -834,6 +951,8 @@ enum BlockEmitter {
     case .varyingVectorPrior(let name, _, _, _, _, _, _): return name
     case .gaussianProcessPrior(let name, _, _, _, _, _):  return name
     case .orderedCutpointsPrior(let name, _):    return name
+    case .simplexPrior(let name, _):             return name
+    case .monotonicEffect(let name, _, _, _, _): return name
     case .link(_, let lhs, _):                return lhs
     case .deterministic(let lhs, _):          return lhs
     }

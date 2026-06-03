@@ -292,6 +292,8 @@ internal enum AlistClassify {
     case .orderedLogistic(let eta, let cp),
          .orderedProbit(let eta, let cp):
       return sym(eta) + sym(cp)
+    case .dirichlet(let alpha):
+      return sym(alpha)
     }
   }
 

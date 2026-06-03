@@ -121,6 +121,29 @@ public enum Statement: Hashable, Sendable {
                           truncation: Truncation,
                           useLpdf: Bool)
 
+  /// Monotonic ordinal-predictor effect (2026-06-02) — McElreath
+  /// Chapter 12 / brms `mo()`. Declaration-only: the node consumes the
+  /// matching `link` / `deterministic` whose LHS is `targetLhs`, and
+  /// the per-row contribution `<scale> * sum(<name>[1:<predictor>[i]])`
+  /// is added inside a synthesised for-loop in the model block. The
+  /// simplex parameter `<name>` is declared separately by a
+  /// `SimplexPrior(name:, length: levels)` node, with its iid Dirichlet
+  /// prior attached via a regular `Prior(name, .dirichlet(alpha))`
+  /// statement. `scale` is the effect-magnitude parameter (the user
+  /// gives it a scalar `Prior`); `predictor` is the integer data column
+  /// holding the ordinal level per observation (assumed 1-indexed).
+  case monotonicEffect(name: String,
+                       scale: String,
+                       predictor: String,
+                       levels: String,
+                       targetLhs: String)
+
+  /// Simplex parameter declaration (2026-06-02): declares
+  /// `simplex[<length>] <name>;`. The user attaches a separate
+  /// `Prior(<name>, .dirichlet(<alpha>))` for the iid prior across
+  /// the simplex entries, mirroring the `OrderedCutpoints` split.
+  case simplexPrior(name: String, length: String)
+
   /// Ordered logit / probit cutpoints (2026-06-02): declares an
   /// `ordered[<K>-1] <name>;` parameter. Used as the `cutpoints` arg
   /// of an `.orderedLogistic` / `.orderedProbit` likelihood. `K` is a

@@ -43,6 +43,7 @@ enum DistributionCatalog {
     case .wishart: return "wishart"
     case .orderedLogistic: return "ordered_logistic"
     case .orderedProbit: return "ordered_probit"
+    case .dirichlet: return "dirichlet"
     }
   }
 
@@ -68,6 +69,7 @@ enum DistributionCatalog {
     case .wishart(let nu, let V):           return "\(arg(nu)), \(arg(V))"
     case .orderedLogistic(let eta, let c),
          .orderedProbit(let eta, let c):    return "\(arg(eta)), \(arg(c))"
+    case .dirichlet(let alpha):             return "\(arg(alpha))"
     }
   }
 
@@ -79,7 +81,7 @@ enum DistributionCatalog {
       return true
     case .normal, .beta, .exponential, .gamma, .cauchy, .lognormal, .uniform,
          .studentT, .multivariateNormal, .lkjCorrCholesky,
-         .multivariateNormalCholesky, .wishart:
+         .multivariateNormalCholesky, .wishart, .dirichlet:
       return false
     }
   }
@@ -92,7 +94,8 @@ enum DistributionCatalog {
   /// multivariate for the truncation-rejection purpose.
   static func isMultivariate(_ distribution: Distribution) -> Bool {
     switch distribution {
-    case .multivariateNormal, .lkjCorrCholesky, .multivariateNormalCholesky, .wishart:
+    case .multivariateNormal, .lkjCorrCholesky, .multivariateNormalCholesky,
+         .wishart, .dirichlet:
       return true
     case .normal, .bernoulli, .binomial, .beta, .exponential, .poisson,
          .gamma, .cauchy, .lognormal, .uniform, .studentT,
@@ -135,6 +138,7 @@ enum DistributionCatalog {
     case .wishart(let nu, let V):           parts = [nu, V]
     case .orderedLogistic(let eta, let c),
          .orderedProbit(let eta, let c):    parts = [eta, c]
+    case .dirichlet(let alpha):             parts = [alpha]
     }
     return parts.compactMap {
       if case .symbol(let s) = $0 { return s } else { return nil }
@@ -239,7 +243,8 @@ enum DistributionCatalog {
       return OutcomeBounds(lower: "1", upper: nil)
     case .normal, .beta, .exponential, .gamma, .cauchy,
          .lognormal, .uniform, .studentT, .multivariateNormal,
-         .lkjCorrCholesky, .multivariateNormalCholesky, .wishart:
+         .lkjCorrCholesky, .multivariateNormalCholesky, .wishart,
+         .dirichlet:
       return OutcomeBounds(lower: nil, upper: nil)
     }
   }

@@ -92,6 +92,15 @@ struct InferredModel {
   /// in `parameters {}`. The user supplies a separate `Prior(<name>, …)`
   /// to give the iid prior across the K-1 cutpoint values.
   let orderedCutpointParameters: [String: String]
+  /// Monotonic effects (2026-06-02): simplex parameter name → length
+  /// cardinality symbol. BlockEmitter declares `simplex[<length>] <name>;`
+  /// in `parameters {}`. Pair with a `Prior(<name>, .dirichlet(<alpha>))`
+  /// for the iid prior across the simplex entries.
+  let simplexParameters: [String: String]
+  /// Monotonic effects: per-effect spec consumed by BlockEmitter's
+  /// `detectMonotonicLoops` pass to fold a matching Link/Deterministic
+  /// into a single combined per-row for-loop in the model block.
+  let monotonicEffects: [MonotonicSpec]
   /// Gaussian process priors (2026-06-01): latent-name → spec for every
   /// `GaussianProcessPrior`. BlockEmitter declares `<name>` in
   /// `transformed parameters {}` (built from `<rawName>` z-scores plus
@@ -104,6 +113,18 @@ struct InferredModel {
   /// instead of `matrix[N, <cols-literal>]`. Populated from each
   /// `GaussianProcessPrior`'s `distanceMatrix` symbol.
   let squareMatrixColumns: Set<String>
+}
+
+/// Monotonic effect spec (2026-06-02): per-`MonotonicEffect`
+/// bookkeeping. BlockEmitter's detection pass pairs each entry with the
+/// Link/Deterministic whose LHS is `targetLhs` and emits one combined
+/// per-row for-loop replacing the original vectorised assignment.
+struct MonotonicSpec: Hashable, Sendable {
+  let name: String           // simplex parameter ("delta")
+  let scale: String          // effect-scale parameter ("bE")
+  let predictor: String      // ordinal integer data column ("edu")
+  let levels: String         // simplex length cardinality symbol ("K_edu")
+  let targetLhs: String      // Link/Deterministic LHS we augment ("mu")
 }
 
 /// Gaussian process spec (2026-06-01): per-`GaussianProcessPrior`
@@ -227,6 +248,9 @@ enum DataInference {
     var squareMatrixColumns: Set<String> = []
     // Ordered logit / probit (2026-06-02).
     var orderedCutpointParameters: [String: String] = [:]
+    // Monotonic effects (2026-06-02).
+    var simplexParameters: [String: String] = [:]
+    var monotonicEffects: [MonotonicSpec] = []
 
     for statement in model.statements {
       switch statement {
@@ -378,6 +402,32 @@ enum DataInference {
         referenced.insert(length)
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
         for s in DistributionCatalog.symbolsReferenced(trunc) { referenced.insert(s) }
+      case .simplexPrior(let name, let length):
+        // Monotonic effects Slice D: declares `simplex[<length>] <name>;`
+        // in `parameters`. Register `length` in `phaseSixSymbolsDeclared`
+        // so the existing Phase-6 anchoring (e.g. `alpha` vector) supplies
+        // the cardinality value, parallel with `VectorPrior`. The user
+        // attaches a separate `Prior(<name>, .dirichlet(<alpha>))` for
+        // the iid prior.
+        if !parameters.contains(name) { parameters.append(name) }
+        simplexParameters[name] = length
+        phaseSixSymbolsDeclared.insert(length)
+      case .monotonicEffect(let name, let scale, let predictor,
+                            let levels, let targetLhs):
+        // Monotonic effects: record the spec for BlockEmitter's
+        // detection pass. The simplex parameter `name` is declared via
+        // a companion `SimplexPrior`; `scale` is a scalar `Prior`;
+        // `predictor` is an integer data column (1-indexed). Insert
+        // `predictor` as a referenced data column so the data block
+        // declares it; the scale parameter is referenced via its
+        // `Prior` statement.
+        monotonicEffects.append(MonotonicSpec(
+          name: name,
+          scale: scale,
+          predictor: predictor,
+          levels: levels,
+          targetLhs: targetLhs))
+        referenced.insert(predictor)
       case .orderedCutpointsPrior(let name, let K):
         // Ordered logit / probit Slice D: declares `ordered[<K>-1] <name>;`
         // in `parameters`. Register K in `phaseSixSymbolsDeclared` so the
@@ -588,6 +638,8 @@ enum DataInference {
       wishartScaleColumns: wishartScaleColumnDims,
       varyingVectorParameters: varyingVectorParameters,
       orderedCutpointParameters: orderedCutpointParameters,
+      simplexParameters: simplexParameters,
+      monotonicEffects: monotonicEffects,
       gaussianProcessGP: gaussianProcessGP,
       squareMatrixColumns: squareMatrixColumns
     )

@@ -173,6 +173,8 @@ internal struct AlistEmitter {
       return ".orderedLogistic(\(renderArg(eta)), \(renderArg(cp)))"
     case .orderedProbit(let eta, let cp):
       return ".orderedProbit(\(renderArg(eta)), \(renderArg(cp)))"
+    case .dirichlet(let alpha):
+      return ".dirichlet(\(renderArg(alpha)))"
     }
   }
 

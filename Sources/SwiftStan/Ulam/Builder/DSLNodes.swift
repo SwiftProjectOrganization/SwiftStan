@@ -313,6 +313,77 @@ public struct VaryingVectorPrior: ModelStatement {
   }
 }
 
+/// Simplex parameter declaration (2026-06-02). Declares
+/// `simplex[<length>] <name>;` in the parameters block. Pair with a
+/// regular `Prior(<name>, .dirichlet(<alpha>))` for the iid prior:
+///
+/// ```swift
+/// SimplexPrior("delta", length: "K_edu")
+/// Prior("delta", .dirichlet("alpha"))
+/// ```
+///
+/// `length` is a cardinality symbol typically anchored by the
+/// Dirichlet's `alpha` vector (a `.realVector` of length K_edu) via
+/// the existing Phase-6 path.
+public struct SimplexPrior: ModelStatement {
+  public let name: String
+  public let length: String
+
+  public init(_ name: String, length: String) {
+    self.name = name
+    self.length = length
+  }
+
+  public var statement: Statement {
+    .simplexPrior(name: name, length: length)
+  }
+}
+
+/// Monotonic ordinal-predictor effect (2026-06-02). McElreath Chapter
+/// 12 / brms `mo()`-style monotonic effect of an ordinal predictor on
+/// a linear predictor:
+///
+/// ```swift
+/// Deterministic("mu", "a + bX*x")
+/// MonotonicEffect("delta", scale: "bE", predictor: "edu",
+///                 levels: "K_edu", targetLhs: "mu")
+/// SimplexPrior("delta", length: "K_edu")
+/// Prior("delta", .dirichlet("alpha"))
+/// ```
+///
+/// The node consumes the matching `Deterministic`/`Link` whose LHS is
+/// `targetLhs` and emits a single combined per-row for-loop that
+/// augments the base RHS with `<scale> * sum(<name>[1:<predictor>[i]])`.
+/// `levels` is the simplex length (= number of ordinal levels in
+/// `predictor`; values must fall in `1..levels`).
+public struct MonotonicEffect: ModelStatement {
+  public let name: String
+  public let scale: String
+  public let predictor: String
+  public let levels: String
+  public let targetLhs: String
+
+  public init(_ name: String,
+              scale: String,
+              predictor: String,
+              levels: String,
+              targetLhs: String) {
+    self.name = name
+    self.scale = scale
+    self.predictor = predictor
+    self.levels = levels
+    self.targetLhs = targetLhs
+  }
+
+  public var statement: Statement {
+    .monotonicEffect(name: name,
+                     scale: scale,
+                     predictor: predictor,
+                     levels: levels,
+                     targetLhs: targetLhs)
+  }
+}
+
 /// Ordered logit / probit cutpoints (2026-06-02) — McElreath Chapter 12
 /// "Monsters and Mixtures". Declares an `ordered[<K>-1] <name>;`
 /// parameter for use as the `cutpoints` arg of an `.orderedLogistic`

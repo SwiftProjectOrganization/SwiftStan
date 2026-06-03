@@ -12,3 +12,7 @@ Docs/Planning docs/
 
 # Finder-generated duplicates (e.g. "Foo 2.md").
 **/* 2.*
+
+# Swift code-coverage raw output dropped by `swift test --enable-code-coverage`.
+default.profraw
+*.profraw

@@ -15,10 +15,19 @@ public func sample(model: String,
                    nosummary: Bool = false,
                    install: Bool = false) -> (String, String) {
 
+  // 2026-06-02: merge defaults per-key instead of dropping the whole
+  // defaults block whenever the user supplies any argument. Previously
+  // a single override like `num_warmup=2000` silently lost the
+  // `num_chains=4` and `num_samples=1000` defaults — surprising and
+  // hard to debug.
   var args: [String] = arguments
-  if args.count == 0 {
-    args.append("num_chains=4")
-    args.append("num_samples=1000")
+  let defaults: [(key: String, value: String)] = [
+    ("num_chains", "4"),
+    ("num_samples", "1000"),
+  ]
+  for (key, value) in defaults
+  where !args.contains(where: { $0.hasPrefix("\(key)=") }) {
+    args.append("\(key)=\(value)")
   }
 
     _ = FileManager.default

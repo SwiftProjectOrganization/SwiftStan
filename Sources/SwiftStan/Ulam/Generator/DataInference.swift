@@ -169,6 +169,7 @@ enum DataInferenceError: Error, CustomStringConvertible {
   case nonCenteredRequiresNormal(name: String)
   case nonCenteredWithTruncationUnsupported(name: String)
   case nonCenteredWithLpdfUnsupported(name: String)
+  case constraintsConflictWithTruncation(name: String)
 
   var description: String {
     switch self {
@@ -199,6 +200,8 @@ enum DataInferenceError: Error, CustomStringConvertible {
       return "ulam: VaryingPrior '\(name)' combines nonCentered: true with a truncation — Stan's truncation auto-normalisation doesn't compose cleanly with the standard-normal raw form"
     case .nonCenteredWithLpdfUnsupported(let name):
       return "ulam: VaryingPrior '\(name)' combines nonCentered: true with useLpdf: true — the non-centred form requires the `~` sampling syntax on `<name>_raw`"
+    case .constraintsConflictWithTruncation(let name):
+      return "ulam: '\(name)' has both `constraints:` and `truncation:` set — pick one. `truncation:` already drives the parameter declaration constraint; `constraints:` exists for the case where you want the declaration constraint WITHOUT the redundant `T[…]` sampling suffix."
     }
   }
 }
@@ -268,21 +271,35 @@ enum DataInference {
         // Record bounds on the outcome variable for the data block.
         let bounds = DistributionCatalog.outcomeBounds(dist)
         if !bounds.isEmpty { outcomeBoundsByLhs[lhs] = bounds }
-      case .prior(let name, let dist, let trunc, _):
+      case .prior(let name, let dist, let trunc, let constraints, let start, _):
         if !parameters.contains(name) { parameters.append(name) }
         scalarPriorNames.insert(name)
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
         for s in DistributionCatalog.symbolsReferenced(trunc) { referenced.insert(s) }
-        // Record the truncation for the parameter declaration. Multiple
-        // priors with non-equal non-empty truncations on the same name
-        // are rejected — we don't try to compute the intersection.
-        if !trunc.isEmpty {
-          if let existing = parameterTruncationByName[name], existing != trunc {
+        // 2026-06-03: `constraints:` is declaration-only — it bypasses
+        // the `T[…]` sampling suffix. Co-setting with `truncation:` is
+        // always a user error since `truncation:` already drives the
+        // declaration constraint too.
+        if !constraints.isEmpty && !trunc.isEmpty {
+          throw DataInferenceError.constraintsConflictWithTruncation(name: name)
+        }
+        // Record the constraint for the parameter declaration. Multiple
+        // priors with non-equal non-empty truncations / constraints on
+        // the same name are rejected — we don't try to compute the
+        // intersection. `Constraints` and `Truncation` share the same
+        // internal `(lower, upper)` shape.
+        let declConstraint = !constraints.isEmpty ? constraints.asTruncation : trunc
+        if !declConstraint.isEmpty {
+          if let existing = parameterTruncationByName[name],
+             existing != declConstraint {
             throw DataInferenceError.conflictingParameterConstraints(name: name)
           }
-          parameterTruncationByName[name] = trunc
+          parameterTruncationByName[name] = declConstraint
         }
-      case .varyingPrior(let name, let indexedBy, let countSymbol, let dist, let trunc, let useLpdf, let nonCentered):
+        // 2026-06-03: per-prior `start:` → init JSON. `Inits([:])` walks
+        // later and overlays by last-write-wins.
+        if let start { initValues[name] = start }
+      case .varyingPrior(let name, let indexedBy, let countSymbol, let dist, let trunc, let constraints, let start, let useLpdf, let nonCentered):
         // Phase 5 Slice B: declare `name` as a vector parameter typed by
         // `countSymbol` (or auto-derived `N_<indexedBy>`); register
         // `indexedBy` as an index column.
@@ -318,13 +335,21 @@ enum DataInference {
             throw DataInferenceError.conflictingVaryingPriorCardinality(name: name)
           }
           vectorParameters[name] = symbol
-          if !trunc.isEmpty {
-            if let existing = parameterTruncationByName[name], existing != trunc {
+          // 2026-06-03: same constraints/truncation reconciliation as
+          // the scalar `.prior` arm above.
+          if !constraints.isEmpty && !trunc.isEmpty {
+            throw DataInferenceError.constraintsConflictWithTruncation(name: name)
+          }
+          let declConstraint = !constraints.isEmpty ? constraints.asTruncation : trunc
+          if !declConstraint.isEmpty {
+            if let existing = parameterTruncationByName[name],
+               existing != declConstraint {
               throw DataInferenceError.conflictingParameterConstraints(name: name)
             }
-            parameterTruncationByName[name] = trunc
+            parameterTruncationByName[name] = declConstraint
           }
         }
+        if let start { initValues[name] = start }
         if let existing = indexColumns[indexedBy], existing != symbol {
           throw DataInferenceError.conflictingIndexColumnCardinality(column: indexedBy)
         }

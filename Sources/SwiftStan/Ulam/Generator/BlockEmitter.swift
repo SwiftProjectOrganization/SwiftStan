@@ -341,10 +341,10 @@ enum BlockEmitter {
       switch statement {
       case .link, .deterministic:
         break // handled above
-      case .prior(let name, let dist, let trunc, let useLpdf):
+      case .prior(let name, let dist, let trunc, _, _, let useLpdf):
         priors.append(try emitSampling(lhs: name, distribution: dist,
                                        truncation: trunc, useLpdf: useLpdf))
-      case .varyingPrior(let name, _, _, let dist, let trunc, let useLpdf, _):
+      case .varyingPrior(let name, _, _, let dist, let trunc, _, _, let useLpdf, _):
         // Phase 5.5 Slice E: non-centred VaryingPriors swap the centred
         // sampling line `<name> ~ normal(mu, sigma);` for the standard
         // form `<name>_raw ~ std_normal();`. The mu/sigma multiplication
@@ -947,8 +947,8 @@ enum BlockEmitter {
   private static func statementLhs(_ statement: Statement) -> String {
     switch statement {
     case .likelihood(let lhs, _, _, _):       return lhs
-    case .prior(let name, _, _, _):           return name
-    case .varyingPrior(let name, _, _, _, _, _, _): return name
+    case .prior(let name, _, _, _, _, _):     return name
+    case .varyingPrior(let name, _, _, _, _, _, _, _, _): return name
     case .vectorPrior(let name, _, _, _, _):  return name
     case .matrixPrior(let name, _, _, _, _, _): return name
     case .covMatrixPrior(let name, _):           return name

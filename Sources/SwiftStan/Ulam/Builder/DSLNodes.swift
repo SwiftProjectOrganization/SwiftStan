@@ -34,21 +34,28 @@ public struct Prior: ModelStatement {
   public let name: String
   public let distribution: Distribution
   public let truncation: Truncation
+  public let constraints: Constraints
+  public let start: Double?
   public let useLpdf: Bool
 
   public init(_ name: String,
               _ distribution: Distribution,
               truncation: Truncation = .none,
+              constraints: Constraints = .none,
+              start: Double? = nil,
               useLpdf: Bool = false) {
     self.name = name
     self.distribution = distribution
     self.truncation = truncation
+    self.constraints = constraints
+    self.start = start
     self.useLpdf = useLpdf
   }
 
   public var statement: Statement {
     .prior(name: name, distribution: distribution,
-           truncation: truncation, useLpdf: useLpdf)
+           truncation: truncation, constraints: constraints,
+           start: start, useLpdf: useLpdf)
   }
 }
 
@@ -104,6 +111,8 @@ public struct VaryingPrior: ModelStatement {
   public let countSymbol: String?
   public let distribution: Distribution
   public let truncation: Truncation
+  public let constraints: Constraints
+  public let start: Double?
   public let useLpdf: Bool
   public let nonCentered: Bool
 
@@ -112,6 +121,8 @@ public struct VaryingPrior: ModelStatement {
               _ distribution: Distribution,
               countSymbol: String? = nil,
               truncation: Truncation = .none,
+              constraints: Constraints = .none,
+              start: Double? = nil,
               useLpdf: Bool = false,
               nonCentered: Bool = false) {
     self.name = name
@@ -119,6 +130,8 @@ public struct VaryingPrior: ModelStatement {
     self.countSymbol = countSymbol
     self.distribution = distribution
     self.truncation = truncation
+    self.constraints = constraints
+    self.start = start
     self.useLpdf = useLpdf
     self.nonCentered = nonCentered
   }
@@ -129,6 +142,8 @@ public struct VaryingPrior: ModelStatement {
                   countSymbol: countSymbol,
                   distribution: distribution,
                   truncation: truncation,
+                  constraints: constraints,
+                  start: start,
                   useLpdf: useLpdf,
                   nonCentered: nonCentered)
   }

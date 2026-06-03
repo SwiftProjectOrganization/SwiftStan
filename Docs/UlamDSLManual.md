@@ -257,7 +257,7 @@ model {
 
 #### Purpose
 
-A sampling statement on a scalar parameter: `name ~ Distribution(...)`. The parameter is declared in `parameters{}` as `real <name>;` (with `<lower=…>` / `<upper=…>` constraints inferred from `truncation` if supplied).
+A sampling statement on a scalar parameter: `name ~ Distribution(...)`. The parameter is declared in `parameters{}` as `real <name>;` (with `<lower=…>` / `<upper=…>` constraints inferred from `truncation` or `constraints` if supplied).
 
 #### Signature
 
@@ -266,6 +266,8 @@ public struct Prior: ModelStatement {
   public init(_ name: String,
               _ distribution: Distribution,
               truncation: Truncation = .none,
+              constraints: Constraints = .none,
+              start: Double? = nil,
               useLpdf: Bool = false)
 }
 ```
@@ -275,6 +277,8 @@ public struct Prior: ModelStatement {
 - `name` — the parameter name (must NOT collide with a data column).
 - `distribution` — the prior distribution (e.g. `.normal(0, 1.5)`).
 - `truncation` — optional `T[...]` suffix; ALSO propagates into the `parameters{}` declaration as a `<lower=...>` / `<upper=...>` constraint.
+- `constraints` *(2026-06-03)* — declaration-only `<lower=…, upper=…>` constraint. Same shape as `Truncation` but emits **only** on the parameter declaration — no `T[…]` sampling suffix. Use when the prior's support already enforces the bound and the sampling-line truncation is redundant (`.exponential` on lower=0, `.beta` on (0, 1)). Mutually exclusive with `truncation:` — the classify pass throws `DataInferenceError.constraintsConflictWithTruncation` if both are non-empty.
+- `start` *(2026-06-03)* — per-prior NUTS warmup init value, merged into `Results/<model>.init.json`. Equivalent to a single entry in `Inits([:])` co-located with the prior; a later `Inits([:])` block overlays by walk order.
 - `useLpdf` — emit `target += ..._lpdf(name | args)` instead of `name ~ ...`.
 
 #### Emitted Stan
@@ -301,7 +305,20 @@ model {
 }
 ```
 
-Multiple priors on the same `name` with disagreeing truncations are rejected (`DataInferenceError.conflictingParameterConstraints`).
+`Prior("sigma", .exponential(1), constraints: Constraints(lower: 0))` → declaration constraint only, no redundant `T[0, ]` on the exponential's natural support:
+
+```stan
+parameters {
+  real<lower=0> sigma;
+}
+model {
+  sigma ~ exponential(1);
+}
+```
+
+`Prior("mu", .normal(178, 20), start: 178.0)` → unchanged Stan source, but `Results/<model>.init.json` includes `{"mu": 178.0}` and the cmdstan binary picks it up via the auto-detected `init=<path>` flag.
+
+Multiple priors on the same `name` with disagreeing truncations or constraints are rejected (`DataInferenceError.conflictingParameterConstraints`). Co-setting `truncation:` and `constraints:` on the same prior throws `DataInferenceError.constraintsConflictWithTruncation`. Worked examples: `constraintsDeclareLowerWithoutTruncationSuffix`, `startKwargFlowsIntoInitJSON`, `initsOverridesPerPriorStart`.
 
 ---
 
@@ -322,6 +339,8 @@ public struct VaryingPrior: ModelStatement {
               _ distribution: Distribution,
               countSymbol: String? = nil,
               truncation: Truncation = .none,
+              constraints: Constraints = .none,
+              start: Double? = nil,
               useLpdf: Bool = false,
               nonCentered: Bool = false)
 }
@@ -334,6 +353,8 @@ public struct VaryingPrior: ModelStatement {
 - `distribution` — the per-group sampling distribution. For `nonCentered: true` this MUST be `.normal(mu, sigma)`.
 - `countSymbol` — override the auto-derived `N_<indexedBy>` cardinality symbol (e.g. `countSymbol: "K"` to get `vector[K] <name>;`).
 - `truncation` — optional `T[...]` suffix. Rejected when combined with `nonCentered: true`.
+- `constraints` *(2026-06-03)* — declaration-only `<lower=…, upper=…>`, applied to the `vector<…>[N_<col>]` form. Same semantics as on `Prior`: declaration only, no `T[…]` suffix; mutually exclusive with `truncation:`.
+- `start` *(2026-06-03)* — per-prior init value merged into `<model>.init.json` for the vector parameter. (cmdstan accepts a scalar init for a vector parameter — every entry is initialised to the same value.)
 - `useLpdf` — `target += _lpdf` form. Rejected when combined with `nonCentered: true`.
 - `nonCentered` — emit the Matt Trick reparameterisation (see below).
 
@@ -789,6 +810,30 @@ Multivariate distributions (`multivariateNormal`) don't support truncation — S
 
 ---
 
+## `Constraints`  *(2026-06-03)*
+
+```swift
+public struct Constraints: Hashable, Sendable {
+  public let lower: DistributionArg?
+  public let upper: DistributionArg?
+  public init(lower: DistributionArg? = nil, upper: DistributionArg? = nil)
+  public static let none = Constraints()
+  public var isEmpty: Bool { lower == nil && upper == nil }
+}
+```
+
+Used as the `constraints:` argument to `Prior` and `VaryingPrior`. Same shape as `Truncation` but **declaration-only**: emits `<lower=…, upper=…>` on the parameter declaration **without** the `T[…]` sampling suffix. Use when the prior's support already enforces the bound (so a `T[…]` would be redundant):
+
+```swift
+Prior("sigma", .exponential(1), constraints: Constraints(lower: 0))
+```
+
+emits `real<lower=0> sigma;` paired with the clean `sigma ~ exponential(1);` — no `T[0, ]`.
+
+Mutually exclusive with `truncation:` — co-setting throws `DataInferenceError.constraintsConflictWithTruncation`. The two arguments are doing semantically distinct things: `truncation:` says "Stan should auto-normalise the density on this restricted range"; `constraints:` says "the parameter lives on this range but the density needs no extra normalisation". For distributions whose support coincides with the constraint, `Constraints` is the McElreath idiom.
+
+---
+
 ## `Expression`
 
 ```swift
@@ -881,6 +926,7 @@ For a complete model, the generator assembles:
 | `DataInferenceError.conflictingIndexColumnCardinality` | An integer index column is bound to disagreeing cardinality symbols across statements. |
 | `DataInferenceError.nonCenteredWithLpdfUnsupported` | `nonCentered: true` combined with `useLpdf: true`. |
 | `DataInferenceError.multipleCardinalitySymbolsAmbiguous` | Multiple Phase-6 cardinality symbols declared in a model that doesn't disambiguate them. |
+| `DataInferenceError.constraintsConflictWithTruncation` | A `Prior` / `VaryingPrior` has both `constraints:` and `truncation:` set. `truncation:` already drives the declaration constraint; pick one. |
 
 ---
 
@@ -915,6 +961,11 @@ Each demo is also tested as a round-trip golden in `Tests/SwiftStanTests/UlamGen
 | `orderedProbitMatchesGolden`                 | Probit variant |
 | `monotonicEffectsMatchesGolden`              | `SimplexPrior` + `MonotonicEffect` + `.dirichlet` |
 | `V2WorkflowTests.howellPipelineEndToEnd`     | `Inits([:])` warmup-init knob with R-hat assertion |
+| `constraintsDeclareLowerWithoutTruncationSuffix` | `Prior(constraints:)` declaration-only `<lower=…>` |
+| `varyingPriorConstraintsDeclareLowerOnVectorType` | `VaryingPrior(constraints:)` on vector-typed parameter |
+| `startKwargFlowsIntoInitJSON`                | Per-prior `start:` flows into `<model>.init.json` |
+| `initsOverridesPerPriorStart`                | `Inits([:])` overlays per-prior `start:` |
+| `constraintsAndTruncationOnSamePriorRejected` | Reject co-set `constraints:` + `truncation:` |
 
 All under `Tests/SwiftStanTests/`.
 

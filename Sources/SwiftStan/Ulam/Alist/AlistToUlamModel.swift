@@ -75,6 +75,8 @@ internal enum AlistToUlamModel {
         out.append(.prior(name: stmt.name,
                           distribution: stmt.dist!,
                           truncation: stmt.truncation,
+                          constraints: .none,
+                          start: nil,
                           useLpdf: false))
       case .varyingPrior(let idx):
         out.append(.varyingPrior(name: stmt.name,
@@ -82,6 +84,8 @@ internal enum AlistToUlamModel {
                                  countSymbol: nil,
                                  distribution: stmt.dist!,
                                  truncation: stmt.truncation,
+                                 constraints: .none,
+                                 start: nil,
                                  useLpdf: false,
                                  nonCentered: false))
       case .vectorPrior(let length):

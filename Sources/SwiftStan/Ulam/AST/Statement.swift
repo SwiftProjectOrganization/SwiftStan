@@ -21,7 +21,20 @@ public enum Statement: Hashable, Sendable {
   /// `name ~ Distribution(...) T[lower, upper];` — sampling statement
   /// over a parameter. Same `truncation` / `useLpdf` semantics as
   /// `likelihood`.
-  case prior(name: String, distribution: Distribution, truncation: Truncation, useLpdf: Bool)
+  ///
+  /// 2026-06-03: `constraints` (declaration-only `<lower=…, upper=…>`)
+  /// and `start` (per-prior NUTS warmup init value, merged into the
+  /// `<model>.init.json` dict) are co-located shortcuts. `constraints`
+  /// is mutually exclusive with `truncation` — the classify pass
+  /// rejects co-set values via `constraintsConflictWithTruncation`.
+  /// `start` collisions with `Inits([:])` resolve by walk-order
+  /// (`Inits([:])` overlays when it appears later).
+  case prior(name: String,
+             distribution: Distribution,
+             truncation: Truncation,
+             constraints: Constraints,
+             start: Double?,
+             useLpdf: Bool)
 
   /// Phase 5: `name[indexedBy] ~ Distribution(...)` — varying-intercept
   /// (or varying-coefficient) sampling statement. The generator declares
@@ -42,6 +55,8 @@ public enum Statement: Hashable, Sendable {
                     countSymbol: String?,
                     distribution: Distribution,
                     truncation: Truncation,
+                    constraints: Constraints,
+                    start: Double?,
                     useLpdf: Bool,
                     nonCentered: Bool)
 

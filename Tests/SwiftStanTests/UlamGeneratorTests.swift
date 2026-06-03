@@ -1390,6 +1390,119 @@ struct UlamGeneratorTests {
       _ = try stancode(model)
     }
   }
+
+  // MARK: - start: / constraints: overrides (2026-06-03)
+
+  /// `constraints:` declares the `<lower=…>` bound on the parameter
+  /// WITHOUT emitting the redundant `T[…]` sampling suffix. McElreath
+  /// idiom for half-positive scale priors like `sigma ~ exponential(1)`
+  /// where the prior's support already enforces lower=0.
+  @Test func constraintsDeclareLowerWithoutTruncationSuffix() throws {
+    let data: UlamData = [
+      "y": .real([1.0, 2.0, 3.0, 2.5, 1.5]),
+    ]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal("mu", "sigma"))
+      Prior("mu", .normal(0, 10))
+      Prior("sigma", .exponential(1),
+            constraints: Constraints(lower: 0))
+    }
+    let stan = try stancode(model)
+    #expect(stan.contains("real<lower=0> sigma;"),
+            "expected declaration-side <lower=0> on sigma; got:\n\(stan)")
+    #expect(stan.contains("sigma ~ exponential(1);"),
+            "expected plain ~ exponential(1) without T[0, ]; got:\n\(stan)")
+    #expect(!stan.contains("sigma ~ exponential(1) T["),
+            "expected NO T[…] suffix on sigma; got:\n\(stan)")
+  }
+
+  /// `constraints:` on `VaryingPrior` flows through the same dict and
+  /// surfaces on the `vector<lower=…>[N_<col>]` declaration form.
+  @Test func varyingPriorConstraintsDeclareLowerOnVectorType() throws {
+    let data: UlamData = [
+      "y":    .integer([3, 5, 4, 6]),
+      "tank": .integer([1, 2, 1, 2]),
+    ]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .poisson("lambda"))
+      Link(.log, lhs: "lambda", rhs: "a[tank]")
+      VaryingPrior("a", indexedBy: "tank",
+                   .normal(0, 1),
+                   constraints: Constraints(lower: 0))
+    }
+    let stan = try stancode(model)
+    #expect(stan.contains("vector<lower=0>[N_tank] a;"),
+            "expected vector<lower=0>[N_tank] a; got:\n\(stan)")
+    #expect(!stan.contains("T[0,"),
+            "expected NO T[0, …] suffix on VaryingPrior sampling line")
+  }
+
+  /// `start:` per-prior flows into `<model>.init.json` via the same
+  /// `InferredModel.initValues` dict that `Inits([:])` populates.
+  @Test func startKwargFlowsIntoInitJSON() throws {
+    let data: UlamData = [
+      "y": .real([170.0, 165.0, 180.0, 175.0]),
+    ]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal("mu", "sigma"))
+      Prior("mu", .normal(178, 20), start: 178.0)
+      Prior("sigma", .uniform(0, 50),
+            constraints: Constraints(lower: 0),
+            start: 10.0)
+    }
+    let json = try stanInits(model)
+    #expect(json.contains("\"mu\":178.0"),
+            "expected mu=178.0 in init JSON; got: \(json)")
+    #expect(json.contains("\"sigma\":10.0"),
+            "expected sigma=10.0 in init JSON; got: \(json)")
+  }
+
+  /// Co-setting `constraints:` and `truncation:` on the same `Prior`
+  /// is rejected via the new `constraintsConflictWithTruncation` error.
+  @Test func constraintsAndTruncationOnSamePriorRejected() throws {
+    let data: UlamData = ["y": .real([1.0, 2.0, 3.0])]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal("mu", "sigma"))
+      Prior("mu", .normal(0, 1))
+      Prior("sigma", .exponential(1),
+            truncation: Truncation(lower: 0),
+            constraints: Constraints(lower: 0))
+    }
+    #expect(throws: DataInferenceError.self) {
+      _ = try stancode(model)
+    }
+  }
+
+  /// Two `Prior`s on the same name with disagreeing `constraints:`
+  /// reuses the existing `conflictingParameterConstraints` error path.
+  @Test func conflictingConstraintsOnSameNameRejected() throws {
+    let data: UlamData = ["y": .real([1.0, 2.0])]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal("mu", "sigma"))
+      Prior("mu", .normal(0, 1), constraints: Constraints(lower: 0))
+      Prior("mu", .normal(0, 1), constraints: Constraints(lower: -10))
+      Prior("sigma", .exponential(1))
+    }
+    #expect(throws: DataInferenceError.self) {
+      _ = try stancode(model)
+    }
+  }
+
+  /// When per-prior `start:` and a later `Inits([:])` set the same key,
+  /// `Inits([:])` overlays (last-write-wins in walk order).
+  @Test func initsOverridesPerPriorStart() throws {
+    let data: UlamData = ["y": .real([170.0, 165.0])]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal("mu", "sigma"))
+      Prior("mu", .normal(178, 20), start: 100.0)
+      Prior("sigma", .exponential(1),
+            constraints: Constraints(lower: 0))
+      Inits(["mu": 178.0])
+    }
+    let json = try stanInits(model)
+    #expect(json.contains("\"mu\":178.0"),
+            "Inits([:]) should overlay per-prior start; got: \(json)")
+  }
 }
 
 // MARK: - End-to-end artifact emission

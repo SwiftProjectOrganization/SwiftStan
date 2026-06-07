@@ -171,6 +171,7 @@ enum DataInferenceError: Error, CustomStringConvertible {
   case nonCenteredWithLpdfUnsupported(name: String)
   case constraintsConflictWithTruncation(name: String)
   case nestedVaryingPriorArity(name: String, got: Int)
+  case countSymbolCollision(symbol: String, reason: String)
 
   var description: String {
     switch self {
@@ -205,6 +206,8 @@ enum DataInferenceError: Error, CustomStringConvertible {
       return "ulam: '\(name)' has both `constraints:` and `truncation:` set — pick one. `truncation:` already drives the parameter declaration constraint; `constraints:` exists for the case where you want the declaration constraint WITHOUT the redundant `T[…]` sampling suffix."
     case .nestedVaryingPriorArity(let name, let got):
       return "ulam: NestedVaryingPrior '\(name)' has indexedBy.count == \(got); v1 supports exactly two grouping dimensions"
+    case .countSymbolCollision(let symbol, let reason):
+      return "ulam: cardinality symbol '\(symbol)' collides with \(reason)"
     }
   }
 }
@@ -264,6 +267,55 @@ enum DataInference {
     var monotonicEffects: [MonotonicSpec] = []
     // NUTS warmup inits (2026-06-02). Last-write-wins on duplicate keys.
     var initValues: [String: Double] = [:]
+
+    // 2026-06-06: cardinality-symbol collision check (TODO §4).
+    //
+    // Reject user-supplied countSymbol / length / dim / rows / cols
+    // values that would shadow a meaningful symbol in the generated
+    // `data {}` block. Three collision classes:
+    //   • reserved sample-size `"N"`;
+    //   • any non-scalar-int data column name (vector / cov_matrix /
+    //     real scalar / array vector etc.) — those expand to `vector[N]
+    //     <col>;` / `cov_matrix[<dim>] <col>;` declarations and would
+    //     clash with the cardinality's `int<lower=1> <symbol>;`;
+    //   • the same symbol assigned to two different cardinality slots
+    //     when there's no `.scalarInt` data entry tying them to the
+    //     same data value (the cafe demo's `J` = `.scalarInt(2)` shared
+    //     by VectorPrior + LKJCorrCholeskyPrior + VaryingVectorPrior
+    //     IS legitimate and intentionally allowed by the
+    //     `.scalarInt`-data short-circuit below).
+    //
+    // GaussianProcessPrior's `countSymbol = "N"` is hard-coded
+    // internally (not user-supplied) and intentionally skips this
+    // check.
+    var reservedDataSymbols: Set<String> = ["N"]
+    for (name, col) in model.data {
+      if case .scalarInt = col { continue }
+      reservedDataSymbols.insert(name)
+    }
+    var cardinalitySymbolOwner: [String: String] = [:]
+    func registerCardinalitySymbol(_ symbol: String, owner: String) throws {
+      if reservedDataSymbols.contains(symbol) {
+        let reason: String
+        if symbol == "N" {
+          reason = "the reserved sample-size symbol 'N'"
+        } else {
+          reason = "data column '\(symbol)' — only `.scalarInt(...)` data entries can also serve as cardinality symbols"
+        }
+        throw DataInferenceError.countSymbolCollision(
+          symbol: symbol, reason: reason)
+      }
+      // Multiple owners are fine when the cardinality is supplied by a
+      // `.scalarInt` data entry — by-name reference to one shared value.
+      if case .scalarInt = model.data[symbol] { return }
+      if let existingOwner = cardinalitySymbolOwner[symbol],
+         existingOwner != owner {
+        throw DataInferenceError.countSymbolCollision(
+          symbol: symbol,
+          reason: "the cardinality symbol already used by \(existingOwner)")
+      }
+      cardinalitySymbolOwner[symbol] = owner
+    }
 
     for statement in model.statements {
       switch statement {
@@ -353,6 +405,8 @@ enum DataInference {
           }
         }
         if let start { initValues[name] = start }
+        try registerCardinalitySymbol(
+          symbol, owner: "VaryingPrior '\(name)' on index column '\(indexedBy)'")
         if let existing = indexColumns[indexedBy], existing != symbol {
           throw DataInferenceError.conflictingIndexColumnCardinality(column: indexedBy)
         }
@@ -364,6 +418,8 @@ enum DataInference {
         // know which Phase-6 data columns are present.
         if !parameters.contains(name) { parameters.append(name) }
         vectorParameters[name] = length
+        try registerCardinalitySymbol(
+          length, owner: "VectorPrior '\(name)' length")
         phaseSixSymbolsDeclared.insert(length)
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
         for s in DistributionCatalog.symbolsReferenced(trunc) { referenced.insert(s) }
@@ -385,6 +441,10 @@ enum DataInference {
         // matrix data column whose shape supplies them).
         if !parameters.contains(name) { parameters.append(name) }
         matrixParameters[name] = (rows: rows, cols: cols)
+        try registerCardinalitySymbol(
+          rows, owner: "MatrixPrior '\(name)' rows")
+        try registerCardinalitySymbol(
+          cols, owner: "MatrixPrior '\(name)' cols")
         referenced.insert(rows)
         referenced.insert(cols)
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
@@ -395,6 +455,8 @@ enum DataInference {
         // workable default.
         if !parameters.contains(name) { parameters.append(name) }
         covMatrixParameters[name] = dim
+        try registerCardinalitySymbol(
+          dim, owner: "CovMatrixPrior '\(name)' dim")
         referenced.insert(dim)
       case .lkjCorrCholeskyPrior(let name, let dim, let eta):
         // Multivariate hierarchical priors Slice A: cholesky_factor_corr
@@ -402,6 +464,8 @@ enum DataInference {
         // correlation matrix.
         if !parameters.contains(name) { parameters.append(name) }
         cholFactorParameters[name] = dim
+        try registerCardinalitySymbol(
+          dim, owner: "LKJCorrCholeskyPrior '\(name)' dim")
         referenced.insert(dim)
         if case .symbol(let s) = eta { referenced.insert(s) }
       case .wishartPrior(let name, let dim, let nu, let V):
@@ -410,6 +474,8 @@ enum DataInference {
         // parameters block emits `cov_matrix[dim] name;` for free.
         if !parameters.contains(name) { parameters.append(name) }
         covMatrixParameters[name] = dim
+        try registerCardinalitySymbol(
+          dim, owner: "WishartPrior '\(name)' dim")
         referenced.insert(dim)
         if case .symbol(let s) = nu { referenced.insert(s) }
         if case .symbol(let s) = V  {
@@ -439,6 +505,10 @@ enum DataInference {
         let sym1 = countSymbols[0] ?? "N_\(col1)"
         let sym2 = countSymbols[1] ?? "N_\(col2)"
         matrixParameters[name] = (rows: sym1, cols: sym2)
+        try registerCardinalitySymbol(
+          sym1, owner: "NestedVaryingPrior '\(name)' on index column '\(col1)'")
+        try registerCardinalitySymbol(
+          sym2, owner: "NestedVaryingPrior '\(name)' on index column '\(col2)'")
         if let existing = indexColumns[col1], existing != sym1 {
           throw DataInferenceError.conflictingIndexColumnCardinality(column: col1)
         }
@@ -459,6 +529,11 @@ enum DataInference {
         if !parameters.contains(name) { parameters.append(name) }
         let outerSymbol = countSymbol ?? "N_\(indexedBy)"
         varyingVectorParameters[name] = (outer: outerSymbol, length: length)
+        try registerCardinalitySymbol(
+          outerSymbol,
+          owner: "VaryingVectorPrior '\(name)' on index column '\(indexedBy)'")
+        try registerCardinalitySymbol(
+          length, owner: "VaryingVectorPrior '\(name)' length")
         if let existing = indexColumns[indexedBy], existing != outerSymbol {
           throw DataInferenceError.conflictingIndexColumnCardinality(column: indexedBy)
         }
@@ -476,6 +551,8 @@ enum DataInference {
         // the iid prior.
         if !parameters.contains(name) { parameters.append(name) }
         simplexParameters[name] = length
+        try registerCardinalitySymbol(
+          length, owner: "SimplexPrior '\(name)' length")
         phaseSixSymbolsDeclared.insert(length)
       case .monotonicEffect(let name, let scale, let predictor,
                             let levels, let targetLhs):
@@ -501,6 +578,8 @@ enum DataInference {
         // J binding for the multivariate hierarchical priors).
         if !parameters.contains(name) { parameters.append(name) }
         orderedCutpointParameters[name] = K
+        try registerCardinalitySymbol(
+          K, owner: "OrderedCutpointsPrior '\(name)' K")
         phaseSixSymbolsDeclared.insert(K)
         referenced.insert(K)
       case .gaussianProcessPrior(let name, let indexedBy, let distanceMatrix,

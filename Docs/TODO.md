@@ -46,7 +46,7 @@ This file is a forward-looking checklist of work that's planned but not yet sche
 
 Quality-of-life items not gated on a particular phase.
 
-- [ ] **`countSymbol` collision check.** If a user provides `countSymbol: "N"` or any value that collides with an existing data symbol, the generator currently produces invalid Stan. Add a sanity check in `DataInference.classify(_:)`.
+- [x] ✅ **`countSymbol` collision check.** `DataInference.classify(_:)` now rejects user-supplied cardinality symbols (covering `countSymbol:` on `VaryingPrior` / `NestedVaryingPrior` / `VaryingVectorPrior`, `length:` on `VectorPrior` / `SimplexPrior`, `dim:` on `LKJCorrCholeskyPrior` / `CovMatrixPrior` / `WishartPrior`, `rows:` / `cols:` on `MatrixPrior`, and `K:` on `OrderedCutpointsPrior`) when the symbol collides with the reserved sample-size `"N"`, with a non-scalarInt data column (vector / cov_matrix / scalar real / array vector), or with another cardinality slot owned by a different DSL node. Auto-derived `N_<col>` collisions with literal data columns are caught too. Legitimate cafe-style sharing via a `.scalarInt(...)` data entry short-circuits the cross-owner check. One new error case `DataInferenceError.countSymbolCollision(symbol:reason:)` carries a human-readable reason. Six unit tests in `DataInferenceCollisionTests` cover N / vector-data / cross-owner / auto-derived / shared-scalarInt-positive paths.
 
 - [ ] **Index column value validation.** `DataMarshaller` computes `<countSymbol>: max(values)` but doesn't verify all values are `>= 1`. A 0 or negative would compile fine but fail Stan's `<lower=1>` data validation at runtime with a less-than-obvious error.
 

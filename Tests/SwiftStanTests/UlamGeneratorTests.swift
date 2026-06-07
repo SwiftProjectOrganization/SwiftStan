@@ -113,6 +113,15 @@ struct UlamGeneratorTests {
       array[N] int trials;
       vector[N] x;
     }
+    transformed data {
+      for (i in 1:N) {
+        if (successes[i] > trials[i]) {
+          reject("successes[", i, "] = ", successes[i],
+                 " > trials[", i, "] = ", trials[i],
+                 " — binomial outcome must satisfy y[i] <= trials[i]");
+        }
+      }
+    }
     parameters {
       real a;
       real<lower=0> b;
@@ -127,6 +136,73 @@ struct UlamGeneratorTests {
     """
 
     #expect(try stancode(model) == expected)
+  }
+
+  // MARK: - Binomial outcome bounds (2026-06-06, TODO §2)
+
+  /// Literal `n` (`binomial(.literal(10), p)`) tightens the outcome
+  /// declaration to `<lower=0, upper=10>` and skips the per-row
+  /// transformed-data check — Stan rejects out-of-range values at the
+  /// declaration site with a stock data-validation error that's already
+  /// row-localised.
+  @Test func binomialLiteralTrialsTightensDeclarationBound() throws {
+    let data: UlamData = [
+      "y": .integer([2, 3, 1, 4, 5, 6, 7, 8]),
+      "x": .real([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),
+    ]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .binomial(n: 10, p: "theta"))
+      Link(.logit, lhs: "theta", rhs: "a + b*x")
+      Prior("a", .normal(0, 1.5))
+      Prior("b", .normal(0, 1))
+    }
+    let stan = try stancode(model)
+    #expect(stan.contains("array[N] int<lower=0, upper=10> y;"),
+            "literal trials should tighten declaration to <upper=10>")
+    #expect(!stan.contains("transformed data"),
+            "literal trials skip the row-loop check")
+  }
+
+  /// `.scalarInt` data entry as `n` (`binomial(.symbol("N_trials"), p)`
+  /// with `"N_trials": .scalarInt(20)`) tightens the declaration to
+  /// `<lower=0, upper=N_trials>` and skips the per-row loop, same as
+  /// literal n.
+  @Test func binomialScalarIntTrialsTightensDeclarationBound() throws {
+    let data: UlamData = [
+      "y":        .integer([2, 3, 1, 4, 5]),
+      "x":        .real([0.1, 0.2, 0.3, 0.4, 0.5]),
+      "N_trials": .scalarInt(20),
+    ]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .binomial(n: "N_trials", p: "theta"))
+      Link(.logit, lhs: "theta", rhs: "a + b*x")
+      Prior("a", .normal(0, 1.5))
+      Prior("b", .normal(0, 1))
+    }
+    let stan = try stancode(model)
+    #expect(stan.contains("array[N] int<lower=0, upper=N_trials> y;"),
+            "scalarInt trials should tighten declaration to <upper=N_trials>")
+    #expect(!stan.contains("transformed data"),
+            "scalarInt trials skip the row-loop check")
+  }
+
+  /// Regression guard for the no-binomial case: a Bernoulli-only model
+  /// should NOT emit a `transformed data {}` block. The
+  /// `transformedDataBlock(_:)` returns nil and `assemble` skips it.
+  @Test func nonBinomialModelOmitsTransformedDataBlock() throws {
+    let data: UlamData = [
+      "y": .integer([0, 1, 0, 1]),
+      "x": .real([0.1, 0.2, 0.3, 0.4]),
+    ]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .bernoulli(p: "p"))
+      Link(.logit, lhs: "p", rhs: "a + b*x")
+      Prior("a", .normal(0, 1.5))
+      Prior("b", .normal(0, 1))
+    }
+    let stan = try stancode(model)
+    #expect(!stan.contains("transformed data"),
+            "non-binomial models shouldn't emit transformed data")
   }
 
   // MARK: - Phase 4 error paths
@@ -1169,6 +1245,15 @@ struct UlamGeneratorTests {
       array[N] int<lower=1, upper=N_size> size;
       array[N] int<lower=1, upper=N_tank> tank;
       array[N] int<lower=0> y;
+    }
+    transformed data {
+      for (i in 1:N) {
+        if (y[i] > density[i]) {
+          reject("y[", i, "] = ", y[i],
+                 " > density[", i, "] = ", density[i],
+                 " — binomial outcome must satisfy y[i] <= trials[i]");
+        }
+      }
     }
     parameters {
       vector[N_tank] a;

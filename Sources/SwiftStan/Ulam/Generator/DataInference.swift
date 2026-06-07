@@ -118,6 +118,14 @@ struct InferredModel {
   /// pipeline marshals these into `Results/<name>.init.json`; cmdstan
   /// auto-picks the file up via the `init=<path>` flag.
   let initValues: [String: Double]
+  /// Per-row binomial outcome bounds checks (2026-06-06, TODO §2). One
+  /// `(outcome, trials)` pair per `.binomial` likelihood whose trials
+  /// argument is a `.integer` data column. `BlockEmitter.transformedDataBlock`
+  /// turns each entry into a `for (i in 1:N) if (outcome[i] > trials[i])
+  /// reject(...)` loop. Literal / `.scalarInt` trials cases are absent
+  /// from this list — their upper bound is encoded directly into the
+  /// outcome declaration's `<upper=...>` constraint instead.
+  let binomialRowChecks: [(outcome: String, trials: String)]
 }
 
 /// Monotonic effect spec (2026-06-02): per-`MonotonicEffect`
@@ -270,6 +278,13 @@ enum DataInference {
     var monotonicEffects: [MonotonicSpec] = []
     // NUTS warmup inits (2026-06-02). Last-write-wins on duplicate keys.
     var initValues: [String: Double] = [:]
+    // 2026-06-06: per-row binomial outcome upper-bound checks (TODO §2).
+    // One entry per `.binomial` likelihood whose `n` is a vector data
+    // column; BlockEmitter.transformedDataBlock turns them into
+    // `for (i in 1:N) if (outcome[i] > trials[i]) reject(...)` blocks.
+    // Literal-n / scalarInt-n cases skip this — their upper bound is
+    // already tightened at the declaration site.
+    var binomialRowChecks: [(outcome: String, trials: String)] = []
 
     // 2026-06-06: cardinality-symbol collision check (TODO §4).
     //
@@ -327,7 +342,38 @@ enum DataInference {
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
         for s in DistributionCatalog.symbolsReferenced(trunc) { referenced.insert(s) }
         // Record bounds on the outcome variable for the data block.
-        let bounds = DistributionCatalog.outcomeBounds(dist)
+        var bounds = DistributionCatalog.outcomeBounds(dist)
+        // 2026-06-06: binomial outcome bounds (TODO §2). The base
+        // bounds for `.binomial` are `(lower: "0", upper: nil)` — the
+        // upper is per-row by default. Three refinements:
+        //   • literal `n` (e.g. `binomial(.literal(10), p)`) → tighten
+        //     to `<upper=10>` at the declaration; no row loop needed.
+        //   • `.symbol` resolving to a `.scalarInt` data entry → same
+        //     story, use the symbol name as the upper.
+        //   • `.symbol` resolving to a `.integer` data column → emit
+        //     a per-row check in a transformed-data block; the
+        //     declaration stays at `<lower=0>` because Stan's array
+        //     syntax can't express per-row uppers.
+        if case .binomial(let n, _) = dist {
+          switch n {
+          case .literal(let trialsCount):
+            if trialsCount == trialsCount.rounded(), trialsCount >= 0 {
+              bounds = DistributionCatalog.OutcomeBounds(
+                lower: "0", upper: String(Int(trialsCount)))
+            }
+          case .symbol(let trialsSymbol):
+            switch model.data[trialsSymbol] {
+            case .scalarInt:
+              bounds = DistributionCatalog.OutcomeBounds(
+                lower: "0", upper: trialsSymbol)
+            case .integer:
+              binomialRowChecks.append(
+                (outcome: lhs, trials: trialsSymbol))
+            default:
+              break
+            }
+          }
+        }
         if !bounds.isEmpty { outcomeBoundsByLhs[lhs] = bounds }
       case .prior(let name, let dist, let trunc, let constraints, let start, _):
         if !parameters.contains(name) { parameters.append(name) }
@@ -823,7 +869,8 @@ enum DataInference {
       monotonicEffects: monotonicEffects,
       gaussianProcessGP: gaussianProcessGP,
       squareMatrixColumns: squareMatrixColumns,
-      initValues: initValues
+      initValues: initValues,
+      binomialRowChecks: binomialRowChecks
     )
   }
 

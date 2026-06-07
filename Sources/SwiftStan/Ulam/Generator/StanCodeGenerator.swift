@@ -34,7 +34,11 @@ public enum StanCodeGenerator {
     // between `parameters` and `model` when any VaryingPrior was
     // declared with `nonCentered: true`. Centred-only models skip
     // the block entirely and stay byte-identical to v1 output.
-    var sections: [String] = [header, data, params]
+    var sections: [String] = [header, data]
+    if let td = BlockEmitter.transformedDataBlock(inferred) {
+      sections.append(td)
+    }
+    sections.append(params)
     if let tp = BlockEmitter.transformedParametersBlock(inferred) {
       sections.append(tp)
     }

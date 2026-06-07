@@ -172,6 +172,32 @@ enum BlockEmitter {
   /// adds a `vector[<N>] <name>;` declaration plus a nested block that
   /// builds the squared-exponential kernel matrix, adds the diagonal
   /// jitter, and assigns `<name> = cholesky_decompose(K) * <name>_z;`.
+  /// 2026-06-06 (TODO §2): `transformed data {}` block emitting per-row
+  /// binomial outcome validation. One `for (i in 1:N)` loop per binomial
+  /// likelihood whose trials argument is a vector data column — each
+  /// row violating `outcome[i] <= trials[i]` raises a `reject(...)` at
+  /// data-load time, surfacing the row index instead of cmdstan's stock
+  /// "log probability is -inf" later in sampling. Returns `nil` when no
+  /// such checks are needed so models without vector-trials binomials
+  /// stay byte-identical to v1 output.
+  static func transformedDataBlock(_ inferred: InferredModel) -> String? {
+    if inferred.binomialRowChecks.isEmpty { return nil }
+    var lines: [String] = ["transformed data {"]
+    for check in inferred.binomialRowChecks {
+      let outcome = check.outcome
+      let trials = check.trials
+      lines.append("  for (i in 1:N) {")
+      lines.append("    if (\(outcome)[i] > \(trials)[i]) {")
+      lines.append("      reject(\"\(outcome)[\", i, \"] = \", \(outcome)[i],")
+      lines.append("             \" > \(trials)[\", i, \"] = \", \(trials)[i],")
+      lines.append("             \" — binomial outcome must satisfy y[i] <= trials[i]\");")
+      lines.append("    }")
+      lines.append("  }")
+    }
+    lines.append("}")
+    return lines.joined(separator: "\n")
+  }
+
   static func transformedParametersBlock(_ inferred: InferredModel) -> String? {
     if inferred.nonCenteredVarying.isEmpty && inferred.gaussianProcessGP.isEmpty {
       return nil

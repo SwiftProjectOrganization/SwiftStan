@@ -1994,12 +1994,17 @@ struct UlamArtifactEmissionTests {
   /// standardisation cmdstan's R-hat can creep above 1.05 on the
   /// intercept row of `beta`.
   @Test func surArtifactsEmitted() throws {
-    let csvPath = "/Users/rob/.julia/dev/Stan/data/WaffleDivorce.csv"
+    // Uses the bundled `Tests/SwiftStanTests/TestDataFiles/WaffleDivorce.csv`
+    // fixture (semicolon-delimited) so the test runs from a clean checkout
+    // without depending on a developer-local data directory.
+    let csvURL = try #require(
+      Bundle.module.url(forResource: "WaffleDivorce",
+                        withExtension: "csv",
+                        subdirectory: "TestDataFiles"),
+      "bundled WaffleDivorce.csv fixture missing — check Package.swift resources:")
     let fm = FileManager.default
-    try #require(fm.fileExists(atPath: csvPath),
-                 "WaffleDivorce.csv fixture not found at \(csvPath)")
 
-    let raw = try String(contentsOfFile: csvPath, encoding: .utf8)
+    let raw = try String(contentsOf: csvURL, encoding: .utf8)
     let lines = raw.split(whereSeparator: \.isNewline).map(String.init)
     let headers = lines[0].split(separator: ";").map {
       String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\""))

@@ -8,5 +8,6 @@ Documentation lives in [`Docs/`](Docs/):
 
 - [`Docs/README.md`](Docs/README.md) — overview, supported functionality, setup, usage, help screens, and the Ulam DSL.
 - [`Docs/CLAUDE.md`](Docs/CLAUDE.md) — architecture notes (loaded by Claude Code sessions in this workspace).
-- [`Docs/TODO.md`](Docs/TODO.md) — forward-looking punch list for topics implemented and possible future work/refinements to do.
+- [`Docs/TODO.md`](Docs/TODO.md) — forward-looking punch list for topics implemented and possible future work/refinements to do.[](()
+- [`Docs/UlamManual.md`](Docs/UlamManual.md) — Ulam manual.
 - [`Docs/UlamDSLManual.md`](Docs/UlamDSLManual.md) — Preliminary version for a Ulam DSL manual.

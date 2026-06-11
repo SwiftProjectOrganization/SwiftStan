@@ -87,7 +87,7 @@ The repository will be downloaded and the project will open in Xcode.
       
   2. `'build and run'` the project.
       
-  3. Expand your CMDSTAN definition in your .cshrc with an `'alias'` and one more environment variable `'STAN_CASES'`:
+  3. Expand your CMDSTAN definition in your .zshrc with an `'alias'` and two more environment variables, `'STAN_CASES'` and `'SWIFTSTAN_PROJECT_ROOT'`:
   
 ```.zshrc
 
@@ -98,9 +98,18 @@ alias swiftstan="/Users/rob/Library/Developer/Xcode/DerivedData/SwiftStan-*/Buil
 
 export STAN_CASES="/Users/rob/Documents/StanCases"
 launchctl setenv STAN_CASES /Users/rob/Documents/StanCases
+
+export SWIFTSTAN_PROJECT_ROOT="/Users/rob/Projects/Swift/SwiftStan"
+launchctl setenv SWIFTSTAN_PROJECT_ROOT /Users/rob/Projects/Swift/SwiftStan
 ```
 
 Make sure "SwiftStan-*" points to the most recent version of SwiftStan in "../Xcode/DerivedData"
+
+Environment variables used by the pipeline:
+
+  - `CMDSTAN` — location of the cmdstan installation (required for `compile`/`sample`).
+  - `STAN_CASES` — case-root directory name under `~/Documents/`; defaults to `StanCases`.
+  - `SWIFTSTAN_PROJECT_ROOT` — location of the SwiftStan source checkout, used by the DSL pipeline's `dsl2stan` to compile the smoke driver against the project's `Ulam/` sources. When unset it defaults to `/Users/rob/Projects/Swift/SwiftStan` and `dsl2stan` prints a notice that the default is being used. Set it if your checkout lives elsewhere.
 
 ### 3. Testing SwiftStan
 

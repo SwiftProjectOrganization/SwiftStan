@@ -13,8 +13,8 @@
 //  Generator}/`) is compiled alongside it so `internal` types resolve.
 //
 //  Shells out rather than depending on `swift-syntax`. The project
-//  root is resolved via the `STAN_PROJECT_ROOT` env var; a
-//  developer-machine fallback is used when it isn't set.
+//  root is resolved via the `SWIFTSTAN_PROJECT_ROOT` env var; a
+//  default value is used (with a printed notice) when it isn't set.
 //
 
 import Foundation
@@ -33,7 +33,7 @@ public enum Dsl2StanError: Error, CustomStringConvertible {
     case .multipleSmokeDrivers(let model, let files):
       return "dsl2stan: multiple *.ulam.swift smoke drivers for model '\(model)': \(files.joined(separator: ", "))"
     case .projectRootNotFound:
-      return "dsl2stan: STAN_PROJECT_ROOT not set and fallback path missing"
+      return "dsl2stan: SWIFTSTAN_PROJECT_ROOT not set and default path missing"
     case .swiftcFailed(let stderr):
       return "dsl2stan: swiftc failed:\n\(stderr)"
     case .runtimeFailed(let stderr, let output):
@@ -130,12 +130,14 @@ private func splitStanAndInits(_ stdout: String) -> (String, String?) {
 }
 
 private func resolveUlamSourceDir() throws -> URL {
-  if let env = ProcessInfo.processInfo.environment["STAN_PROJECT_ROOT"], !env.isEmpty {
+  if let env = ProcessInfo.processInfo.environment["SWIFTSTAN_PROJECT_ROOT"], !env.isEmpty {
     let url = URL(fileURLWithPath: (env as NSString).expandingTildeInPath, isDirectory: true)
     return url.appendingPathComponent("Sources/SwiftStan/Ulam", isDirectory: true)
   }
-  let fallback = URL(fileURLWithPath: "/Users/rob/Projects/Swift/SwiftStan/Sources/SwiftStan/Ulam",
-                     isDirectory: true)
+  let defaultRoot = "/Users/rob/Projects/Swift/SwiftStan"
+  print("dsl2stan: SWIFTSTAN_PROJECT_ROOT not set — using default \(defaultRoot)")
+  let fallback = URL(fileURLWithPath: defaultRoot, isDirectory: true)
+    .appendingPathComponent("Sources/SwiftStan/Ulam", isDirectory: true)
   if FileManager.default.fileExists(atPath: fallback.path) { return fallback }
   throw Dsl2StanError.projectRootNotFound
 }

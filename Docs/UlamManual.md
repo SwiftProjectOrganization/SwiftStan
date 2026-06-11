@@ -1208,6 +1208,6 @@ LKJ-Cholesky, Gaussian processes, ordered/monotonic effects).
 
 ## See also
 
-- [`UlamDSLManual.md`](UlamDSLManual.md) — per-construct reference for the DSL and
-  emitted Stan.
+- [`DSLManual.md`](DSLManual.md) — the same examples via the DSL pipeline
+  (`alist2dsl` → `dsl2stan`); produces identical Stan source.
 - [`README.md`](README.md) — project overview, setup, and environment configuration.

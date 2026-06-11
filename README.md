@@ -11,4 +11,3 @@ Documentation lives in [`Docs/`](Docs/):
 - [`Docs/TODO.md`](Docs/TODO.md) — forward-looking punch list for topics implemented and possible future work/refinements to do.[](()
 - [`Docs/UlamManual.md`](Docs/UlamManual.md) — Ulam manual.
 - [`Docs/DSLManual.md`](Docs/DSLManual.md) — Ulam manual via the DSL pipeline (`alist2dsl` → `dsl2stan`).
-- [`Docs/UlamDSLManual.md`](Docs/UlamDSLManual.md) — Preliminary version for a Ulam DSL manual.

@@ -177,6 +177,28 @@ Both files are written on every run (zero bytes means "ran but emitted nothing")
 The `sample` command uses `save_cmdstan_config=true` by default and writes "<Name>_output_config.json" to the Results directory. The `runinfo` subcommand reads that JSON into a typed `RunInfo` value and writes a slightly simplified, "<name>.runinfo.json" to Results.
 
 
+## Example cases
+
+The repository ships ready-to-run inputs for every model worked through in the two manuals under the top-level `Examples/` directory. Each example is a self-contained case directory named after the model:
+
+```
+Examples/<name>/
+├── Preliminaries/     the inputs (<name>.csv, <name>.alist.R, and for the DSL cases <Name>.ulam.swift)
+└── Results/           empty — the pipeline writes its output here
+```
+
+To follow a manual, copy the case directory into your `~/Documents/<STAN_CASES>/` root and run the pipeline against it. For example:
+
+```bash
+cp -R Examples/howell ~/Documents/StanCases/
+swiftstan ulam --model howell
+```
+
+The cases routed through the in-process [`UlamManual.md`](UlamManual.md) (`stancode` path) are `radon`, `bernoulli_1`, `binomial`, `howell`, `radon_np`, `chimpanzees`, `ucb`, and `cafe`. The cases routed through the [`DSLManual.md`](DSLManual.md) (`alist2dsl` → `dsl2stan` path) are `radon_dsl`, `radon_np_dsl`, `chimpanzees_dsl`, and `cafe_dsl`.
+
+Each `Results/` ships empty (it carries only a `.gitkeep` placeholder); the pipeline populates it on the first run.
+
+
 ## Usage  
 
 The package can be used from the CLI (Terminal) or from within Xcode.

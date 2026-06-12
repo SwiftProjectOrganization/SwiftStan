@@ -118,14 +118,24 @@ internal enum AlistClassify {
     var vectorPromotions: [String: String] = [:]   // sigmaName → "J"
     var lengthBindings: [String: Int] = [:]        // "J" → 2
     var halfPositive: Set<String> = []
+    // `c(a, b)[cafe] ~ dmvnorm2(...)` packs its split coefficients into a
+    // single `array[N] vector[J]` parameter (`name`), so a deterministic
+    // line that still references the split names (`a[cafe]`, `b[cafe]`)
+    // must be rewritten to the packed-and-indexed form
+    // (`name[cafe][1]`, `name[cafe][2]`). Map each component to (packed
+    // name, 1-based slot).
+    var componentSlots: [String: (packed: String, slot: Int)] = [:]
     for stmt in lowered {
-      if case .varyingVectorSample(_, _, let len, let sName, _, _) = stmt {
+      if case .varyingVectorSample(let name, _, let len, let components, let sName, _, _) = stmt {
         vectorPromotions[sName] = varyingVectorLengthSymbol
         lengthBindings[varyingVectorLengthSymbol] = len
         // σ-vectors flanking a Cholesky scale are conventionally
         // positive; promote them into the half-positive set the
         // truncation post-pass already consults.
         halfPositive.insert(sName)
+        for (i, comp) in components.enumerated() {
+          componentSlots[comp] = (packed: name, slot: i + 1)
+        }
       }
     }
 
@@ -188,7 +198,7 @@ internal enum AlistClassify {
                                 dist: dist,
                                 truncation: trunc,
                                 linkRhs: nil))
-      case .varyingVectorSample(let name, let idx, _, _, let dist, let trunc):
+      case .varyingVectorSample(let name, let idx, _, _, _, let dist, let trunc):
         varyingVectorParams.append(name)
         indexColumns.append(idx)
         statements.append(.init(
@@ -203,13 +213,13 @@ internal enum AlistClassify {
                                 name: target,
                                 dist: nil,
                                 truncation: .none,
-                                linkRhs: rhs))
+                                linkRhs: rewritePackedComponents(rhs, using: componentSlots)))
       case .deterministic(let target, let rhs):
         statements.append(.init(kind: .deterministic,
                                 name: target,
                                 dist: nil,
                                 truncation: .none,
-                                linkRhs: rhs))
+                                linkRhs: rewritePackedComponents(rhs, using: componentSlots)))
       }
     }
 
@@ -348,6 +358,42 @@ internal enum AlistClassify {
   private static func mergeLowerZero(_ trunc: Truncation) -> Truncation {
     if trunc.lower != nil { return trunc }
     return Truncation(lower: 0, upper: trunc.upper)
+  }
+
+  /// Rewrite references to a `c(...)`-packed coefficient's split name in
+  /// a deterministic / link RHS into the packed-and-indexed form. With
+  /// `c(a, b)[cafe] ~ dmvnorm2(...)` packed as `ab`, the line
+  /// `mu <- a[cafe] + b[cafe]*x` becomes `ab[cafe][1] + ab[cafe][2]*x`
+  /// — the only shape the generator can emit (an `array[N] vector[J]`
+  /// element access). Non-component symbols pass through untouched.
+  private static func rewritePackedComponents(
+    _ node: ExpressionNode,
+    using slots: [String: (packed: String, slot: Int)]) -> ExpressionNode {
+    if slots.isEmpty { return node }
+    func walk(_ n: ExpressionNode) -> ExpressionNode {
+      switch n {
+      case .identifier, .literal:
+        return n
+      case .indexed(let name, let index):
+        if let s = slots[name] {
+          return .chainedIndexed(name: s.packed,
+                                 outerIndex: walk(index),
+                                 innerIndex: .literal(.integer(s.slot)))
+        }
+        return .indexed(name: name, index: walk(index))
+      case .binary(let op, let lhs, let rhs):
+        return .binary(op: op, lhs: walk(lhs), rhs: walk(rhs))
+      case .unary(let op, let operand):
+        return .unary(op: op, operand: walk(operand))
+      case .call(let name, let argument):
+        return .call(name: name, argument: walk(argument))
+      case .chainedIndexed(let name, let outer, let inner):
+        return .chainedIndexed(name: name, outerIndex: walk(outer), innerIndex: walk(inner))
+      case .subscript2(let name, let idx1, let idx2):
+        return .subscript2(name: name, idx1: walk(idx1), idx2: walk(idx2))
+      }
+    }
+    return walk(node)
   }
 }
 

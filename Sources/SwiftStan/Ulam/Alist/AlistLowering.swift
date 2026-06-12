@@ -33,6 +33,7 @@ internal enum LoweredAlistStatement: Equatable {
   case varyingVectorSample(name: String,
                            indexedBy: String,
                            length: Int,
+                           componentNames: [String],
                            sigmaName: String,
                            dist: Distribution,
                            truncation: Truncation)
@@ -202,18 +203,36 @@ internal enum AlistLowering {
         .identifier(names.first ?? ""), in: dist.name)
     }
     let mean = try lowerArg(dist.args[0], in: dist.name)
-    guard case .identifier(let lOmega) = dist.args[1] else {
-      throw AlistLoweringError.unsupportedDistributionArg(dist.args[1], in: dist.name)
+    // McElreath's two correlated-varying-effects forms order their
+    // scale and correlation args differently:
+    //   dmvnormchol(Mu, L_Rho, sigma) — cholesky factor, then scale;
+    //   dmvnorm2(Mu, sigma, Rho)      — scale, then correlation.
+    // Both reduce to `diag_pre_multiply(sigma, corr)` and a σ-name of
+    // `sigma`. Mapping them identically (as v1 did) made `dmvnorm2`
+    // treat its correlation matrix as the σ-vector — which then got a
+    // spurious `lower:0` truncation and was emitted as a VectorPrior
+    // instead of an LKJ-Cholesky prior.
+    let sigmaIndex: Int
+    let corrIndex: Int
+    switch dist.name {
+    case "dmvnormchol": (corrIndex, sigmaIndex) = (1, 2)
+    case "dmvnorm2":    (sigmaIndex, corrIndex) = (1, 2)
+    default:
+      throw AlistLoweringError.unsupportedDistribution(name: dist.name)
     }
-    guard case .identifier(let sigma) = dist.args[2] else {
-      throw AlistLoweringError.unsupportedDistributionArg(dist.args[2], in: dist.name)
+    guard case .identifier(let sigma) = dist.args[sigmaIndex] else {
+      throw AlistLoweringError.unsupportedDistributionArg(dist.args[sigmaIndex], in: dist.name)
     }
-    let chol = DistributionArg.symbol("diag_pre_multiply(\(sigma), \(lOmega))")
+    guard case .identifier(let corr) = dist.args[corrIndex] else {
+      throw AlistLoweringError.unsupportedDistributionArg(dist.args[corrIndex], in: dist.name)
+    }
+    let chol = DistributionArg.symbol("diag_pre_multiply(\(sigma), \(corr))")
     let synthName = names.joined()
     return .varyingVectorSample(
       name: synthName,
       indexedBy: indexColumn,
       length: names.count,
+      componentNames: names,
       sigmaName: sigma,
       dist: .multivariateNormalCholesky(mean: mean, chol: chol),
       truncation: truncation)

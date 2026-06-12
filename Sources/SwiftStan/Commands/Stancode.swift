@@ -73,5 +73,20 @@ public func stancode(model: String, verbose: Bool = false) throws -> URL {
     throw StancodeError.writeFailed(outURL, underlying: error)
   }
   if verbose { print("stancode: wrote \(outURL.path)") }
+
+  // Side-file: model-known scalar-int constants (e.g. the multivariate
+  // dimension `J`) that the `.stan` data block declares but `csv2json`
+  // can't derive from the CSV. Written so `csv2json` can merge them
+  // into `<name>.data.json`. Remove any stale sidecar when the current
+  // model has none, so a previous model definition can't inject a wrong
+  // value.
+  let scalarsURL = paths.results.appendingPathComponent("\(model).scalars.json")
+  let scalars = stanScalars(ulamModel)
+  if !scalars.isEmpty {
+    try? scalars.write(to: scalarsURL, atomically: true, encoding: .utf8)
+    if verbose { print("stancode: wrote \(scalarsURL.path)") }
+  } else {
+    try? FileManager.default.removeItem(at: scalarsURL)
+  }
   return outURL
 }

@@ -121,6 +121,22 @@ public func csv2json(model: String, verbose: Bool = false) throws -> URL {
     }
   }
 
+  // Merge model-known scalar-int constants (e.g. the multivariate
+  // dimension `J`) that `stancode`/`dsl2stan` recorded in a sidecar.
+  // These are declared in the `.stan` data block but aren't CSV columns,
+  // so they can't be derived here. Only inject scalars the schema
+  // actually declares (and that weren't already derived), so cmdstan
+  // gets exactly the variables its data block expects.
+  let scalarsURL = paths.results.appendingPathComponent("\(model).scalars.json")
+  if let scalarsData = try? Data(contentsOf: scalarsURL),
+     let scalarObj = try? JSONSerialization.jsonObject(with: scalarsData) as? [String: Any] {
+    for (key, value) in scalarObj
+    where output[key] == nil && schema.declaration(named: key) != nil {
+      output[key] = value
+      if verbose { print("csv2json: merged scalar constant \(key) from sidecar") }
+    }
+  }
+
   let outURL = paths.results.appendingPathComponent("\(model).data.json")
   let json = try JSONSerialization.data(withJSONObject: output, options: [.prettyPrinted, .sortedKeys])
   try json.write(to: outURL, options: .atomic)

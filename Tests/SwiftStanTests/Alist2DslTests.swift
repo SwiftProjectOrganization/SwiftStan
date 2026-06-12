@@ -152,6 +152,58 @@ struct Alist2DslTests {
     #expect(!swiftSource.contains("\"L_Omega\": .real("))
   }
 
+  /// McElreath's `dmvnorm2(Mu, sigma, Rho)` orders its scale and
+  /// correlation args the opposite way from `dmvnormchol(Mu, L, sigma)`.
+  /// Regression for a lowering bug that mapped both identically — which
+  /// made `dmvnorm2` treat its correlation matrix `Rho` as the σ-vector,
+  /// emitting it as a truncated `VectorPrior` (rejected downstream as a
+  /// multivariate distribution with `T[...]`) instead of an
+  /// `LKJCorrCholeskyPrior`, and reversing the `diag_pre_multiply` args.
+  static let cafeAlistDmvnorm2 = """
+    cafe_demo <- ulam(
+      alist(
+        wait ~ dnorm(mu, sigma),
+        mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+        c(a_cafe, b_cafe)[cafe] ~ dmvnorm2(c(a, b), sigma_cafe, Rho),
+        a ~ dnorm(0, 10),
+        b ~ dnorm(0, 10),
+        sigma_cafe ~ dcauchy(0, 2),
+        sigma ~ dcauchy(0, 2),
+        Rho ~ dlkjcorr(2)
+      ),
+      data=d )
+    """
+
+  @Test func cafeDmvnorm2AlistMapsScaleAndCorrelation() throws {
+    let model = "alist2dsl_cafe_dmvnorm2_fixture"
+    let paths = casePaths(for: model)
+    try ensureCaseDirectories(paths)
+    defer { try? FileManager.default.removeItem(at: caseRoot().appendingPathComponent(model)) }
+
+    let alistURL = paths.preliminaries.appendingPathComponent("\(model).alist.R")
+    try Self.cafeAlistDmvnorm2.write(to: alistURL, atomically: true, encoding: .utf8)
+
+    let swiftURL = try alist2dsl(model: model)
+    let swiftSource = try String(contentsOf: swiftURL, encoding: .utf8)
+
+    // `sigma_cafe` (the dmvnorm2 scale arg) — not `Rho` — is the σ-vector:
+    // promoted to a length-J VectorPrior with the σ-slot lower:0 truncation.
+    #expect(swiftSource.contains("VectorPrior(\"sigma_cafe\", length: \"J\", .cauchy(0, 2), truncation: Truncation(lower: 0))"))
+    // `Rho` (the dmvnorm2 correlation arg) → dedicated LKJ-Cholesky prior,
+    // with NO truncation (it's multivariate).
+    #expect(swiftSource.contains("LKJCorrCholeskyPrior(\"Rho\", dim: \"J\", eta: 2)"))
+    #expect(!swiftSource.contains("VectorPrior(\"Rho\""))
+    // chol arg keeps `diag_pre_multiply(sigma, corr)` order: scale first.
+    #expect(swiftSource.contains("chol: \"diag_pre_multiply(sigma_cafe, Rho)\""))
+    // The deterministic line's split coefficient refs (`a_cafe[cafe]`,
+    // `b_cafe[cafe]`) are rewritten to the packed-and-indexed form so the
+    // generator can emit the `array[N] vector[J]` element access.
+    #expect(swiftSource.contains("Deterministic(\"mu\", \"a_cafeb_cafe[cafe][1] + a_cafeb_cafe[cafe][2]*afternoon\")"))
+    // …and the split names must NOT leak into the data literal as columns.
+    #expect(!swiftSource.contains("\"a_cafe\": "))
+    #expect(!swiftSource.contains("\"b_cafe\": "))
+  }
+
   // MARK: - Identity-link / bare deterministic emission
 
   /// McElreath's bare `<name> <- <expr>` form should render as a

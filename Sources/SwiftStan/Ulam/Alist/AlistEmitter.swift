@@ -24,6 +24,12 @@ internal struct AlistEmitter {
   /// stdout) still parses the source half cleanly.
   internal static let initsSentinel = "// === SWIFTSTAN_INITS ==="
 
+  /// Separator the smoke driver prints before the scalar-constants JSON
+  /// (e.g. the multivariate dimension `J`). `dsl2stan` splits on this
+  /// to write `<name>.scalars.json`, which `csv2json` then merges into
+  /// the data JSON. Printed before the inits block when present.
+  internal static let scalarsSentinel = "// === SWIFTSTAN_SCALARS ==="
+
   internal let stem: String      // e.g. "Chimpanzees" → produces ChimpanzeesSmoke
   internal let modelName: String // e.g. "chimpanzees" — the dir name
   internal let classified: ClassifiedAlist
@@ -40,6 +46,11 @@ internal struct AlistEmitter {
     s += "\n"
     s += "    do {\n"
     s += "      print(try stancode(model))\n"
+    s += "      let scalars = stanScalars(model)\n"
+    s += "      if !scalars.isEmpty {\n"
+    s += "        print(\"\(Self.scalarsSentinel)\")\n"
+    s += "        print(scalars)\n"
+    s += "      }\n"
     s += "      let inits = try stanInits(model)\n"
     s += "      if !inits.isEmpty {\n"
     s += "        print(\"\(Self.initsSentinel)\")\n"

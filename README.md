@@ -7,8 +7,8 @@
 Documentation lives in [`Docs/`](Docs/):
 
 - [`Docs/README.md`](Docs/README.md) — overview, supported functionality, setup, usage, help screens, and the ulam DSL.
-- [`Docs/UlamManual.md`](Docs/UlamManual.md) — ulam manual using `stancode`.
-- [`Docs/DSLManual.md`](Docs/DSLManual.md) — ulam manual via the Swift/DSL pipeline (`alist2dsl` → `dsl2stan`).
+- [`Docs/UlamManual.md`](Docs/UlamManual.md) — ulam manual (`stancode` → `csv2json` → `CMDSTAN`).
+- [`Docs/DSLManual.md`](Docs/DSLManual.md) — ulam manual via the Swift+DSL pipeline (`alist2dsl` → `dsl2stan` → `csv2json` → `CMDSTAN`).
 - [`Docs/TODO.md`](Docs/TODO.md)
 - [`Docs/CLAUDE.md`](Docs/CLAUDE.md)
 

@@ -1316,4 +1316,4 @@ The DSL pipeline and this manual are still growing. Planned additions:
 
 - [`UlamManual.md`](UlamManual.md) — the same examples via the in-process `stancode`
   path (no `swiftc`); the DSL pipeline here produces identical Stan source.
-- [`README.md`](README.md) — project overview, setup, and environment configuration.
+- [`UserGuide.md`](UserGuide.md) — project overview, setup, and environment configuration.

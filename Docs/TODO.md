@@ -79,5 +79,5 @@ Not strictly part of the Ulam port but tracked since they consume its output.
 
 ## References
 
-- [`CLAUDE.md`](CLAUDE.md) — architecture notes for the Ulam module.
+- [`../CLAUDE.md`](../CLAUDE.md) — architecture notes for the Ulam module.
 - McElreath, *Statistical Rethinking* (2nd ed.) — Chapters 13 (multilevel) and 14 (correlated varying effects).

@@ -8,10 +8,10 @@
 
 Documentation lives in [`Docs/`](Docs/):
 
-- [`Docs/README.md`](Docs/README.md) — Overview, supported functionality, setup and usage.
+- [`Docs/UserGuide.md`](Docs/UserGuide.md) — Overview, supported functionality, setup and usage.
 - [`Docs/UlamManual.md`](Docs/UlamManual.md) — Ulam pipeline manual (`stancode` → `csv2json` → `CMDSTAN`).
 - [`Docs/DSLManual.md`](Docs/DSLManual.md) — Swift+DSL pipeline (`alist2dsl` → `dsl2stan` → `csv2json` → `CMDSTAN`).
 - [`Docs/TODO.md`](Docs/TODO.md) — Future work items.
-- [`Docs/CLAUDE.md`](Docs/CLAUDE.md) — Guidance for Claude.
+- [`CLAUDE.md`](CLAUDE.md) — Guidance for Claude.
 
 As the last item indicates, the ulam port is being worked on using Claude.

@@ -1,4 +1,4 @@
-# README
+# SwiftStan User Guide
 
 ## Purpose of SwiftStan package
 
@@ -6,7 +6,7 @@
 
 2. Hosting a port of [McElreath](https://www.routledge.com/Statistical-Rethinking-A-Bayesian-Course-with-Examples-in-R-and-STAN/McElreath/p/book/9780367139919)'s R implementation ulam() in [rethinking](https://github.com/rmcelreath/rethinking) to Swift.
 
-This project is work in progress!!! Work completed or still to be done can be found in [TODO](https://github.com/SwiftProjectOrganization/Stan/blob/main/Docs/TODO.md). Some additional technical details can be found in [CLAUDE](https://github.com/SwiftProjectOrganization/Stan/blob/main/Docs/CLAUDE.md). Lots of testing and more examples are needed for the ulam pipeline.
+This project is work in progress!!! Work completed or still to be done can be found in [TODO](https://github.com/SwiftProjectOrganization/Stan/blob/main/Docs/TODO.md). Some additional technical details can be found in [CLAUDE](https://github.com/SwiftProjectOrganization/Stan/blob/main/CLAUDE.md). Lots of testing and more examples are needed for the ulam pipeline.
 
 
 ## Supported functionality  
@@ -258,7 +258,7 @@ In the SwiftStan directory:
 
 ## Additional project documentation
 
-- [`CLAUDE.md`](CLAUDE.md) — architecture notes for the `Stan` Swift package (Commands / Methods / Support layering, the `(String, String)` return convention, the Ulam module layout, etc.). Loaded by Claude Code sessions in this workspace.
+- [`../CLAUDE.md`](../CLAUDE.md) — architecture notes for the SwiftStan package (Commands / Methods / Support layering, the `(String, String)` return convention, the Ulam module layout, etc.). Loaded by Claude Code sessions in this workspace.
 - [`TODO.md`](TODO.md) — forward-looking punch list for more advanced topics (SUR, LKJ-Cholesky, post-sampling helpers, etc.).
 
 

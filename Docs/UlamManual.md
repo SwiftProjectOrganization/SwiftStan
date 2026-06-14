@@ -2103,4 +2103,4 @@ The pipeline and this manual are still growing. Planned additions:
 
 - [`DSLManual.md`](DSLManual.md) — the same examples via the DSL pipeline
   (`alist2dsl` → `dsl2stan`); produces identical Stan source.
-- [`README.md`](README.md) — project overview, setup, and environment configuration.
+- [`UserGuide.md`](UserGuide.md) — project overview, setup, and environment configuration.

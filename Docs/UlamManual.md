@@ -1,26 +1,33 @@
+
 # Ulam Manual
+
 
 ## 1. Purpose
 
-This manual walks through a set of currently supported R-style `alist()` models, showing each step.
+This manual walks through a set of example models, illustrating the steps in three different workflows:
 
-The workflow shown here is the **file-based CLI pipeline**:
-
+1. **Forward file-based workflow**:
 ```
 stancode  →  csv2json  →  compile  →  sample
 ```
+This is the basic workflow for using the ulam port followed by the cmdstan steps `compile` and `sample`. All steps can be combined in a single command:
+```
+swiftstan ulam --model <name>
+```
 
-Each example starts from a model description in `Preliminaries/<name>.alist.R` and
-uses the `swiftstan` subcommands to generate Stan source, build it, and (in later
-chapters) sample from it.
+2. **Forward DSL/swiftc based workflow**:
+```
+alist2dsl → dsl2stan (swiftc based) → compile → sample
+```
+The DSL/swiftc workflow is described in the DSLManula.md.
 
-Requirements:
 
-- macOS only; Swift 6.2+.
-- `$CMDSTAN` must point at a cmdstan installation.
-- `$STAN_CASES` selects the case-root directory; it defaults to
-  `~/Documents/StanCases/`.
-
+3. **Reverse workflow**:
+```
+stan2alist
+```
+This step "closes the loop", it attempts to translate a .stan file back into a .alist.r file, see an example in §5.2 (radon_pp).
+ 
 ---
 
 ## 2. Introduction
@@ -39,8 +46,9 @@ split into inputs and outputs:
     └── <name>.<method>.log / .error.log
 ```
 
-The model description borrows McElreath's `alist()` notation from the `rethinking`
-R package. By convention **the first `~` line is the likelihood**; the remaining
+The model description in `"<name>.alist.r"` borrows McElreath's `alist()` notation from the `rethinking` R package.
+
+By convention **the first `~` line is the likelihood**; the remaining
 `~` lines are priors. This convention drives how the parser assigns roles when it
 lowers the `alist()` into a Stan program.
 
@@ -51,8 +59,7 @@ The two subcommands used in this chapter:
 | `swiftstan stancode --model <name>` | `Preliminaries/<name>.alist.r` | `Results/<name>.stan` |
 | `swiftstan compile --model <name>` | `Results/<name>.stan` | `Results/<name>` (binary) + compile logs |
 
-`stancode` runs entirely in-process (no `swiftc`, no cmdstan). `compile` shells out
-to cmdstan's `make` to translate the Stan source to C++ and build a native binary.
+`stancode` runs entirely in-process (no `swiftc`, no cmdstan). `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary.
 
 ### Reverse direction: `stan2alist`
 
@@ -61,7 +68,9 @@ to cmdstan's `make` to translate the Stan source to C++ and build a native binar
 `Preliminaries/<name>.alist.R`. It also runs in-process. Use it to recover an
 editable `alist()` from a hand-written or generated Stan file.
 
-It targets the round-trip / idiomatic-McElreath Stan subset. Declaration
+It targets a round-trip workflow, but with limitations (currently).
+
+In the case of the radon_pp exmple, the declaration
 constraints (`<lower=0>`), half-Cauchy `T[0, ]` suffixes, and `<offset>`/
 `<multiplier>` affine non-centering are dropped on the way back — they are
 re-derived (or are semantically equivalent to the centred form) when
@@ -69,8 +78,11 @@ re-derived (or are semantically equivalent to the centred form) when
 round-trips byte-for-byte for vectorising models. `generated quantities` and
 `transformed *` blocks have no `alist()` form and are dropped with a warning;
 `for`/`while` loops (non-vectorisable indexed linear models) and multivariate
-distributions are out of scope and fail loud. It refuses to overwrite an
-existing `.alist.R` unless `--force` is given.
+distributions are out of scope and fail loud.
+
+It refuses to overwrite an existing `.alist.R` unless `--force` is given.
+
+As stated in the README.md, the reverse workflow is an "experiment within an experiment".
 
 ---
 
@@ -82,11 +94,9 @@ existing `.alist.R` unless `--force` is given.
 
 The radon dataset is a multilevel example: measurements
 of indoor radon gas concentration in homes, recorded together with the floor on
-which the measurement was taken (basement vs. first floor). In its full form it is
-the textbook varying-intercept-by-county model, see [ARM](https://sites.stat.columbia.edu/gelman/arm/).
+which the measurement was taken (basement vs. first floor). In its full form it is the textbook varying-intercept-by-county model, see [ARM](https://sites.stat.columbia.edu/gelman/arm/).
 
-The version used here is the **simplest** form — a complete-pooling linear regression of
-log-radon on the floor indicator, with no grouping:
+The version used here is the **simplest** form — a complete-pooling linear regression of log-radon on the floor indicator, with no grouping:
 
 ```
 log_radon ~ Normal(alpha + beta * floor, sigma)
@@ -122,7 +132,7 @@ priors on `alpha`, `beta`, and `sigma`.
 
 > Note on filename case: the file on disk is `radon.alist.r` (lowercase `.r`). The
 > CLI resolves `Preliminaries/<name>.alist.R`; on macOS's case-insensitive APFS the
-> two match. Other case fixtures in the repository use the uppercase `.alist.R`.
+> two match.
 
 Generate the Stan source:
 
@@ -214,9 +224,7 @@ clang++ -std=c++17 ... .../Results/radon.o src/cmdstan/main_threads.o \
 rm .../Results/radon.o .../Results/radon.hpp
 ```
 
-(The real log lines are long absolute paths and full compiler flag lists; they are
-abbreviated above for readability. The logs overwrite on each run — copy them aside
-if you want a historical record.)
+(The real log lines are long absolute paths and full compiler flag lists; they are abbreviated above for readability. The logs overwrite on each run — copy them aside if you want a historical record.)
 
 #### 3.1.4 Preparing the data with `csv2json`
 
@@ -1810,15 +1818,10 @@ Estimating `mu_alpha` and `sigma_alpha` from the data lets information *flow bet
 counties*: data-poor counties are shrunk toward the overall mean `mu_alpha`, while
 data-rich counties stay close to their own estimate.
 
-Rather than hand-write the `alist()` for this model, this section starts from the other
-end. A Stan programmer would naturally write this model in idiomatic Stan — reaching for
-two features the generator does not emit: an `offset`/`multiplier` non-centred parameter
-and a `generated quantities` posterior-predictive block. We take exactly such a
-hand-written file, run it **backwards** through `stan2alist` (§2) to recover an editable
-`alist()`, copy that into the `radon_pp` case, and then drive it **forwards** through the
-usual `stancode → compile → csv2json → sample` pipeline. The forward Stan that results is
-byte-for-byte the centred model — demonstrating the `stan → stan2alist → stancode`
-round-trip end-to-end.
+Rather than hand-write the `"<name>.alist.r"` for this model, this section starts from the other end. A Stan programmer would naturally write this model in idiomatic Stan — reaching for two features the generator does not emit: an `offset`/`multiplier` non-centred parameter and a `generated quantities` posterior-predictive block.
+
+We take exactly such a hand-written file, run it **backwards** through `stan2alist` (§2) to recover an editable `"<name>.alist.r"`, copy that into the `radon_pp` case, and then drive it **forwards** through the
+usual `stancode → compile → csv2json → sample` pipeline. The forward Stan that results is byte-for-byte the centred model — demonstrating the `stan → stan2alist → stancode` round-trip end-to-end.
 
 #### 5.2.2 The idiomatic Stan template, and recovering its alist with `stan2alist`
 
@@ -2088,10 +2091,10 @@ The pipeline and this manual are still growing. Planned additions:
   Stan* (2nd ed.), CRC Press — the source of the `ulam()` DSL and most examples here.
 - The `rethinking` R package — <https://github.com/rmcelreath/rethinking>.
 - Stan and cmdstan documentation —
-  <https://mc-stan.org/docs/2_37/cmdstan-guide/>.
+  <https://mc-stan.org/>.
 - Gelman, A. & Hill, J. *Data Analysis Using Regression and Multilevel/Hierarchical
   Models* (ARM) — the radon example — <https://sites.stat.columbia.edu/gelman/arm/>.
-- [SwiftStats](https://github.com/SwiftProjectOrganization/SwiftStats) — the sibling
+- [SwiftStats](https://github.com/SwiftProjectOrganization/SwiftStats) — a possible sibling
   package that consumes the clean `*.samples.csv` / `*.stansummary.csv` outputs.
 
 ---

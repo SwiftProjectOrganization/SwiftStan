@@ -47,7 +47,7 @@ This project is work in progress!!! Work completed or still to be done can be fo
 **Notes**
 
 1. By default `ulam` prefers the fast in-process `stancode` path when an "<name>.alist.R" is present.                          
-2. Command `ulam` falls back to `dsl2stan` against a hand-authored smoke driver.
+2. Command `ulam` falls back to `dsl2stan` against a hand-authored "smoke driver.". See DSLManual.md.
 
 
 ### Shared between both pipelines
@@ -141,7 +141,6 @@ The ulam pipeline looks either for files in `"~/Documents/<STAN_CASES>/<name>/Pr
 
 Produced files end up in either Preliminaries (`"<Name>.ulam.swift"` and `"<name>.alist.r"`) or in Results (`"<name>.stan"` and `"<name>.data.json"`).
 
-
 ### Files read when using the pipelines
 
 In `"~/Documents/<STAN_CASES>/<name>/Preliminaries"` 3 files can be present:
@@ -155,9 +154,8 @@ In `"~/Documents/<STAN_CASES>/<name>/Results"` at least 2 files must be present 
     1. `"<name>.data.json"`: If data is needed for the model.
     2. `"<name>.stan"`: Stan language program.
     
-See the examples in UlamManual.md and DSLManual.md for details.
+See the examples in UlamManual.md and DSLManual.md for details.            
 
-            
 ### Per-invocation logs
 
 Every cmdstan call (`compile`, `sample`, `optimize`, `laplace`, `pathfinder`, `stansummary`) writes its raw stdout and stderr to the model's `Results/` directory as:
@@ -241,7 +239,7 @@ or
 
 3. `'swiftstan ulam --mode lchimpanzees'`
 
-    The `alist2dsl` command uses Swift to first create an intermediate `'Ulam smoke driver'` which takes roughly 6 seconds longer. But I do like the option to generate the DSL where the structure of the Stan model is clearly labeled and the input data file checked.
+The `alist2dsl` command uses Swift to first create an intermediate `'DSL smoke driver'` which takes roughly 6 seconds longer. But I do like the option to generate the DSL where the structure of the Stan model is clearly labeled and the input data file checked.
 
 ### Usage from within Xcode
 
@@ -261,7 +259,7 @@ In the SwiftStan directory:
 ## Additional project documentation
 
 - [`CLAUDE.md`](CLAUDE.md) — architecture notes for the `Stan` Swift package (Commands / Methods / Support layering, the `(String, String)` return convention, the Ulam module layout, etc.). Loaded by Claude Code sessions in this workspace.
-- [`TODO.md`](TODO.md) — forward-looking punch list for topics beyond v1.5 scope (SUR, LKJ-Cholesky, post-sampling helpers, etc.).
+- [`TODO.md`](TODO.md) — forward-looking punch list for more advanced topics (SUR, LKJ-Cholesky, post-sampling helpers, etc.).
 
 
 

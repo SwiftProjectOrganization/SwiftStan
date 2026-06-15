@@ -378,9 +378,10 @@ struct Stan2AlistTests {
     /// exercises a varying prior (`alpha[county]`), a vectorising
     /// deterministic link (`mu <- alpha[county] + beta*floor`), and
     /// half-Cauchy scales (the `T[0, ]` / `<lower=0>` round-trip). Both
-    /// vectorise — chimpanzees is deliberately excluded because its
-    /// `vector * vector` term forces the generator into loop emission,
-    /// which is out of v1 scope (see `roundTripLoopModelFailsLoud`).
+    /// vectorise. `chimpanzees` exercises the loop path: its `vector *
+    /// vector` term forces the generator into a `for (i in 1:N)` loop,
+    /// which `StanBlockParser` now inverts back into the vectorised
+    /// assignment (see Docs/LoopEmissionPlan.md), so it round-trips too.
     static let multilevelAlist = """
     alist(
       log_radon ~ dnorm( mu , sigma ),
@@ -398,7 +399,7 @@ struct Stan2AlistTests {
     /// flow: stage the alist → stancode (original) → stan2alist
     /// (force-overwrites the alist) → stancode (round-trip) → compare.
     @Test("alist → stancode → stan2alist → stancode round-trips byte-identically",
-          arguments: ["howell", "multilevel"])
+          arguments: ["howell", "multilevel", "chimpanzees"])
     func roundTripsThroughStancode(_ fixture: String) throws {
       let model = "stan2alist_roundtrip_\(fixture)"
       let paths = casePaths(for: model)
@@ -425,20 +426,40 @@ struct Stan2AlistTests {
               "round-trip diverged for \(fixture):\n--- original ---\n\(original)\n--- roundtrip ---\n\(roundtrip)")
     }
 
-    /// A model whose generated Stan contains a `for` loop (chimpanzees'
-    /// `vector * vector` term) is out of v1 scope and must fail loud
-    /// rather than mis-parse the loop body.
-    @Test("a looped (non-vectorising) model fails loud")
-    func roundTripLoopModelFailsLoud() throws {
+    /// `StanBlockParser` inverts only the single-assignment contract loop
+    /// the forward emitter produces (`for (i in 1:N) { lhs[i] = rhs; }`).
+    /// A loop with a multi-statement body — a genuinely per-row model that
+    /// needs a real loop — is off-contract and must still fail loud rather
+    /// than mis-parse the body.
+    @Test("an off-contract loop body fails loud")
+    func offContractLoopFailsLoud() throws {
       let model = "stan2alist_loop_fixture"
       let paths = casePaths(for: model)
       try ensureCaseDirectories(paths)
       defer { try? FileManager.default.removeItem(at: caseRoot().appendingPathComponent(model)) }
 
-      try stageBundledFixture(
-        named: "chimpanzees.alist.R",
-        to: paths.preliminaries.appendingPathComponent("\(model).alist.R"))
-      _ = try stancode(model: model)   // emits a `for` loop
+      // Two statements in the loop body (an assignment plus a per-row
+      // sampling statement) — not the single-assignment contract loop.
+      let offContract = """
+      data {
+        int<lower=0> N;
+        array[N] real y;
+      }
+      parameters {
+        real mu;
+        real<lower=0> sigma;
+      }
+      model {
+        vector[N] m;
+        for (i in 1:N) {
+          m[i] = mu;
+          y[i] ~ normal(m[i], sigma);
+        }
+      }
+      """
+      try offContract.write(
+        to: paths.results.appendingPathComponent("\(model).stan"),
+        atomically: true, encoding: .utf8)
 
       #expect(throws: Stan2AlistError.self) {
         _ = try stan2alist(model: model, force: true)

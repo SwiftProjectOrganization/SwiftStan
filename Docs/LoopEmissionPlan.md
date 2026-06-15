@@ -1,0 +1,93 @@
+# Loop Emission Plan
+
+How SwiftStan handles a linear predictor that cannot ride Stan's native
+vectorisation, in both the forward (`stancode`: alist/DSL → Stan) and reverse
+(`stan2alist`: Stan → alist) directions.
+
+## Background
+
+A McElreath linear model lowers to a single deterministic/link assignment, e.g.
+
+```r
+logit(p) <- a + a_actor[actor] + a_block[block_id] + (bp + bpc*condition)*prosoc_left
+```
+
+Most such assignments vectorise — Stan overloads `+ - .* ./` element-wise, indexes a
+vector by an integer array (`a_actor[actor]` gathers a length-`N` vector), and
+vectorises the `~` operator natively. SwiftStan emits those as a single line.
+
+Some shapes do **not** vectorise under SwiftStan's emitter and are written as a
+per-row `for (i in 1:N) { ... }` loop instead (`BlockEmitter.classifyVectorisation`):
+
+- `vector * vector` / `vector / vector` — Stan parses `*`/`/` as matrix
+  multiply / dot product, not element-wise (`bpc*condition` once both are vectors).
+- chained indexing `ab[cafe][k]` — vector-of-vectors element access (varying slopes
+  under `multi_normal`).
+- nested groupings `a[country, region]` — matrix lookup, per-row scalar.
+
+## Forward emitted-loop grammar (the contract)
+
+For each non-vectorising Link / Deterministic statement the emitter produces exactly
+one loop, of exactly this shape (`BlockEmitter.swift`, `modelBlock` + `renderLoopBody`):
+
+```stan
+for (i in 1:N) {
+  <lhs>[i] = inv_link( <body> );   // Link: wrapped in the inverse-link call
+  // or, for a plain Deterministic:
+  // <lhs>[i] = <body>;
+}
+```
+
+Invariants the reverse parser may rely on:
+
+- **One loop variable**, always `i`, always bound `1:N`.
+- **Single-statement body** — exactly one assignment, `<lhs>[i] = <rhs>;`.
+- `<body>` is the source RHS with every data vector and index column subscripted by
+  `[i]`: `a_actor[actor]` → `a_actor[actor[i]]`, `condition` → `condition[i]`.
+  Scalar parameters and literals appear verbatim. Operator precedence is preserved
+  with parentheses.
+- Link wrapping uses the same inverse-link names the vectorised path uses
+  (`inv_logit`, `exp`, …), so de-wrapping is identical in both paths.
+
+Anything outside this grammar (multi-statement bodies, `while`, nested loops,
+non-`1:N` bounds, recursive/time-series or ragged-array models) is **out of scope**
+and fails loud in both directions.
+
+## Forward status
+
+Complete. The emitter loop-emits the full McElreath example suite — chimpanzees
+(`vector*vector`), cafe varying-slopes (`ab[cafe][k]`), nested groupings
+(`a[country, region]`), monotonic effects, and SUR pairs — verified by the
+`UlamGeneratorTests` goldens and the end-to-end artifact tests. The remaining
+`BlockEmitterError.loopEmissionRequired` throws are correctness guards for genuinely
+ill-typed models (indexing a *scalar* `Prior`, e.g. `a[group]` with no matching
+`VaryingPrior`) and are expected to keep failing loud.
+
+## Reverse plan (`stan2alist`)
+
+Today `StanBlockParser` rejects every `for`/`while`/`{` (it splits model statements
+on `;`, which would split a loop body). The fix inverts the forward grammar above:
+
+1. **Brace-aware extraction** in `StanBlockParser.parseModelStatements`: replace the
+   blanket rejection with a brace-depth splitter that recognises the contract loop
+   (`for ( i in 1:N ) { <single assignment> }`). Off-contract loops still throw
+   `StanBlockParseError.unsupportedLoop`.
+2. **De-subscript the body** (the inverse of `renderLoopBody`): parse `lhs[i] = rhs`,
+   walk the expression tree, drop `[i]` subscripts (`a_actor[actor[i]]` →
+   `a_actor[actor]`, `condition[i]` → `condition`), and emit a normalised
+   `StanModelStatement.assignment(lhs, rhs)` — the *same* form the vectorised path
+   produces. No new `StanProgram` case is required.
+3. Downstream is unchanged: `StanToUlamModel.reconstructAssignment` already inverts
+   `inv_logit`/`exp`/`logit`, and `AlistTextEmitter` renders the result.
+
+Result: a loop-based model round-trips byte-identically through
+`alist → stancode → stan2alist → stancode`, restoring chimpanzees to the round-trip
+oracle.
+
+## Non-goals
+
+- Lowering `vector * vector` to element-wise `.*` so loops are emitted less often:
+  Stan can vectorise such terms, but switching the emitter would rewrite every golden
+  and break the byte-identical round-trip contract.
+- General loop bodies (recursive/time-series, ragged arrays, conditional per-row
+  logic): these genuinely require Stan loops and stay fail-loud in both directions.

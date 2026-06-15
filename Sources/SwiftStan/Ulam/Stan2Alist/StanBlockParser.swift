@@ -212,16 +212,144 @@ enum StanBlockParser {
 
   private static func parseModelStatements(_ body: String) throws -> [StanModelStatement] {
     let stripped = stripComments(body)
-    // The statement splitter is `;`-based and can't span a `for`/`while`
-    // loop body. The forward emitter produces a loop only for a
-    // non-vectorisable indexed linear model (e.g. a `vector * vector`
-    // term). Fail loud rather than mis-parse the `{ … }` block.
-    if stripped.range(of: #"\b(for|while)\b"#, options: .regularExpression) != nil
-        || stripped.contains("{") {
+    // The forward emitter wraps a non-vectorising linear predictor in a
+    // single per-row `for (i in 1:N) { lhs[i] = rhs; }` loop (the
+    // contract in Docs/LoopEmissionPlan.md). Rewrite each such loop back
+    // into the equivalent vectorised assignment by dropping the `[i]`
+    // subscripts — the inverse of BlockEmitter.renderLoopBody — so the
+    // rest of the pipeline treats it like any other assignment. Anything
+    // off that contract (`while`, non-`1:N` bounds, multi-statement or
+    // nested bodies, stray braces) fails loud with `unsupportedLoop`.
+    let normalised = try rewriteContractLoops(stripped)
+    let statements = splitStatements(normalised)
+    return try statements.compactMap(parseModelStatement)
+  }
+
+  // MARK: - Contract-loop rewriting (inverse of BlockEmitter loop emission)
+
+  /// Walk the model body, copying text verbatim except for contract
+  /// `for (i in 1:N) { … }` loops, which are rewritten in place into a
+  /// `;`-terminated vectorised assignment. `while`, stray braces, and any
+  /// loop that doesn't match the single-assignment contract throw.
+  private static func rewriteContractLoops(_ body: String) throws -> String {
+    let chars = Array(body)
+    var out = ""
+    var i = 0
+    while i < chars.count {
+      if let kw = keyword(at: i, in: chars) {
+        if kw == "while" { throw StanBlockParseError.unsupportedLoop }
+        i = try appendRewrittenForLoop(chars, from: i, into: &out)
+        continue
+      }
+      let c = chars[i]
+      // Any brace outside a recognised contract loop is off-contract.
+      if c == "{" || c == "}" { throw StanBlockParseError.unsupportedLoop }
+      out.append(c)
+      i += 1
+    }
+    return out
+  }
+
+  /// The `for`/`while` keyword starting at `i` (token boundaries on both
+  /// sides), or nil. Avoids matching identifiers like `format`.
+  private static func keyword(at i: Int, in chars: [Character]) -> String? {
+    func matches(_ word: String) -> Bool {
+      let w = Array(word)
+      guard i + w.count <= chars.count else { return false }
+      for k in 0..<w.count where chars[i + k] != w[k] { return false }
+      let boundaryBefore = i == 0 || !isIdentifierChar(chars[i - 1])
+      let after = i + w.count
+      let boundaryAfter = after >= chars.count || !isIdentifierChar(chars[after])
+      return boundaryBefore && boundaryAfter
+    }
+    if matches("for") { return "for" }
+    if matches("while") { return "while" }
+    return nil
+  }
+
+  /// Parse a contract `for (i in 1:N) { lhs[i] = rhs; }` starting at the
+  /// `for` keyword, append the de-subscripted `lhs = rhs;` to `out`, and
+  /// return the index just past the closing brace.
+  private static func appendRewrittenForLoop(_ chars: [Character],
+                                             from start: Int,
+                                             into out: inout String) throws -> Int {
+    var i = start + 3 // past "for"
+    while i < chars.count, chars[i].isWhitespace { i += 1 }
+    guard i < chars.count, chars[i] == "(",
+          let closeParen = matchingDelimiterIndex(chars, from: i,
+                                                  openChar: "(", closeChar: ")") else {
       throw StanBlockParseError.unsupportedLoop
     }
-    let statements = splitStatements(stripped)
-    return try statements.compactMap(parseModelStatement)
+    let header = String(chars[(i + 1)..<closeParen]).trimmingCharacters(in: .whitespaces)
+    guard let loopVar = contractLoopVar(header) else {
+      throw StanBlockParseError.unsupportedLoop
+    }
+
+    i = closeParen + 1
+    while i < chars.count, chars[i].isWhitespace { i += 1 }
+    guard i < chars.count, chars[i] == "{",
+          let closeBrace = matchingDelimiterIndex(chars, from: i,
+                                                  openChar: "{", closeChar: "}") else {
+      throw StanBlockParseError.unsupportedLoop
+    }
+    let inner = String(chars[(i + 1)..<closeBrace])
+    // Reject nested loops/blocks before splitting the body.
+    if inner.contains("{")
+        || inner.range(of: #"\b(for|while)\b"#, options: .regularExpression) != nil {
+      throw StanBlockParseError.unsupportedLoop
+    }
+    let bodyStatements = splitStatements(inner)
+    guard bodyStatements.count == 1 else { throw StanBlockParseError.unsupportedLoop }
+    let stmt = bodyStatements[0]
+    // The contract body is a single assignment (`lhs[i] = rhs`), never a
+    // sampling statement.
+    guard stmt.contains("="), !stmt.contains("~") else {
+      throw StanBlockParseError.unsupportedLoop
+    }
+
+    out.append(desubscript(stmt, loopVar: loopVar))
+    out.append(";")
+    return closeBrace + 1
+  }
+
+  /// Validate a contract loop header `i in 1:N` and return the loop
+  /// variable. The forward emitter always emits the `1:N` bound; any
+  /// other range is off-contract.
+  private static func contractLoopVar(_ header: String) -> String? {
+    let pattern = #"^([A-Za-z_]\w*)\s+in\s+1\s*:\s*N$"#
+    guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
+    let range = NSRange(header.startIndex..., in: header)
+    guard let m = re.firstMatch(in: header, range: range), m.numberOfRanges >= 2,
+          let r = Range(m.range(at: 1), in: header) else { return nil }
+    return String(header[r])
+  }
+
+  /// Drop every `[<loopVar>]` subscript — the exact inverse of
+  /// `renderLoopBody`, which only ever appends `[<loopVar>]` to data
+  /// vectors / index columns. `a_actor[actor[i]]` → `a_actor[actor]`,
+  /// `condition[i]` → `condition`, `p[i] = …` → `p = …`.
+  private static func desubscript(_ s: String, loopVar: String) -> String {
+    let pattern = "\\[\\s*\(loopVar)\\s*\\]"
+    let collapsed = s.replacingOccurrences(of: pattern, with: "",
+                                           options: .regularExpression)
+    return collapseWhitespace(collapsed).trimmingCharacters(in: .whitespaces)
+  }
+
+  private static func matchingDelimiterIndex(_ chars: [Character],
+                                             from openIdx: Int,
+                                             openChar: Character,
+                                             closeChar: Character) -> Int? {
+    var depth = 0
+    var idx = openIdx
+    while idx < chars.count {
+      if chars[idx] == openChar { depth += 1 }
+      else if chars[idx] == closeChar {
+        depth -= 1
+        if depth == 0 { return idx }
+      }
+      idx += 1
+    }
+    return nil
   }
 
   /// Stan type keywords that begin a model-block local declaration

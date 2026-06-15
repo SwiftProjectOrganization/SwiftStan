@@ -75,9 +75,12 @@ constraints (`<lower=0>`), half-Cauchy `T[0, ]` suffixes, and `<offset>`/
 `<multiplier>` affine non-centering are dropped on the way back — they are
 re-derived (or are semantically equivalent to the centred form) when
 `stancode` regenerates the Stan, so `stancode → stan2alist → stancode`
-round-trips byte-for-byte for vectorising models. `generated quantities` and
-`transformed *` blocks have no `alist()` form and are dropped with a warning;
-`for`/`while` loops (non-vectorisable indexed linear models) and multivariate
+round-trips byte-for-byte for vectorising models — and for contract-loop models
+(e.g. chimpanzees' `vector * vector` term), whose single `for (i in 1:N) { lhs[i]
+= rhs; }` emission the parser inverts by de-subscripting the body back to the
+vectorised assignment (see `Docs/LoopEmissionPlan.md`). `generated quantities`
+and `transformed *` blocks have no `alist()` form and are dropped with a warning;
+off-contract loops (`while`, multi-statement/recursive bodies) and multivariate
 distributions are out of scope and fail loud.
 
 It refuses to overwrite an existing `.alist.R` unless `--force` is given.

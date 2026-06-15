@@ -38,8 +38,7 @@ public func sample(model: String,
   do {
     try ensureCaseDirectories(paths, verbose: verbose)
   } catch {
-    print("", "Could not create case directories for \(model): \(error.localizedDescription)")
-    exit(5)
+    return ("", "Could not create case directories for \(model): \(error.localizedDescription)")
   }
 
   var result = ("", "")
@@ -57,7 +56,7 @@ public func sample(model: String,
                         verbose: verbose)
     printResult(result)
   } else {
-    exit(6) // Creation of .json data file failed
+    return result // Creation of .json data file failed
   }
 
   if result.1 == "" {
@@ -67,7 +66,7 @@ public func sample(model: String,
       printResult(result)
     }
   } else {
-    exit(7) // stanSample failed
+    return result // stanSample failed
   }
 
   if !nosummary {
@@ -82,7 +81,7 @@ public func sample(model: String,
       if !verbose {
         printResult(result)
       }
-      exit(8) // getSampleResults failed
+      return result // getSampleResults failed
     }
   }
 
@@ -95,7 +94,7 @@ public func sample(model: String,
       }
 
     } else {
-      exit(9) // stanSummary failed
+      return result // stanSummary failed
     }
   }
 

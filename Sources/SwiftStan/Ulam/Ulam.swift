@@ -96,6 +96,7 @@ public func ulam(_ model: UlamModel,
 public func ulamPipeline(model: String,
                          cmdstan: String,
                          verbose: Bool = false,
+                         force: Bool = false,
                          arguments: [String] = []) -> (String, String) {
   let paths = casePaths(for: model)
   do {
@@ -173,7 +174,8 @@ public func ulamPipeline(model: String,
                               arguments: arguments,
                               cmdstan: cmdstan,
                               verbose: verbose,
-                              install: false)
+                              install: false,
+                              force: force)
   if compileResult.1 != "" { return compileResult }
 
   return sample(model: model,

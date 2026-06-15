@@ -75,7 +75,7 @@ public func laplace(model: String = "bernoulli",
     }
   } else {
     printResult(result)
-    exit(40)
+    return result
   }
 
   return result

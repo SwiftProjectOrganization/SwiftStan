@@ -34,7 +34,7 @@ import Foundation
 enum TestCaseRootBootstrap {
   /// Touched from every `@Suite` struct's `init()`. The closure runs
   /// exactly once thanks to Swift's lazy-static-let semantics.
-  nonisolated(unsafe) static let install: Void = {
+    static let install: Void = {
     let documents = FileManager.default
       .urls(for: .documentDirectory, in: .userDomainMask)[0]
     let baseName: String
@@ -47,8 +47,17 @@ enum TestCaseRootBootstrap {
     } else {
       baseName = "StanCases"
     }
-    caseRootOverride = documents
-      .appendingPathComponent("\(baseName)_Test", isDirectory: true)
+    let fm = FileManager.default
+    // Default to ~/tmp (no TCC consent required, works from both `swift test`
+    // and Xcode's test runner). When $STAN_CASES is explicitly set, honour it
+    // — the user has already made the directory writable.
+    if ProcessInfo.processInfo.environment["STAN_CASES"] != nil {
+      caseRootOverride = documents
+        .appendingPathComponent("\(baseName)_Test", isDirectory: true)
+    } else {
+      caseRootOverride = fm.temporaryDirectory
+        .appendingPathComponent("\(baseName)_Test", isDirectory: true)
+    }
     return ()
   }()
 }

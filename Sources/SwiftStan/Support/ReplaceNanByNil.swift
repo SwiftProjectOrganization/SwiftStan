@@ -18,7 +18,7 @@ public func replaceNanByNil(_ filePath: String) {
       content = try String(contentsOfFile: filePath, encoding: .utf8)
     } catch {
       print("Error reading file: \(error)")
-      exit(1)
+      return
     }
     
     // Step 2: Define the regex pattern

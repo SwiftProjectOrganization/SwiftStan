@@ -29,7 +29,7 @@ public func pathfinder(model: String = "bernoulli",
     }
   } else {
     printResult(result)
-    exit(30)
+    return result
   }
 
   return result

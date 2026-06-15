@@ -28,7 +28,7 @@ public func optimize(model: String = "bernoulli",
     }
   } else {
     printResult(result)
-    exit(20)
+    return result
   }
 
   return result

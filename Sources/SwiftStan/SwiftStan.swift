@@ -43,6 +43,12 @@ struct OptionsCompile: ParsableArguments {
   )
   var install: Bool = false
   
+  @Flag(
+    name: [.customLong("force"), .customShort("F")],
+    help: "Recompile even if the binary already exists."
+  )
+  var force: Bool = false
+
   @Option(
     help: "Location of cmdstan.")
   var cmdstan: String?
@@ -50,7 +56,7 @@ struct OptionsCompile: ParsableArguments {
   @Option(
     help: "Model name.")
   var model: String?
-  
+
   @Argument(
     help: "Arguments for method."
   )
@@ -144,7 +150,8 @@ extension SwiftStan {
                            arguments: options.values,
                            cmdstan: cmdstan,
                            verbose: options.verbose,
-                           install: options.install)
+                           install: options.install,
+                           force: options.force)
       printFinalResult(result)
     }
   }
@@ -370,7 +377,7 @@ extension SwiftStan {
 
     @OptionGroup var options: OptionsLimited
 
-    @Flag(name: [.customLong("force"), .customShort("f")],
+    @Flag(name: [.customLong("force"), .customShort("F")],
           help: "Overwrite an existing Preliminaries/<name>.alist.R.")
     var force: Bool = false
 
@@ -455,6 +462,12 @@ extension SwiftStan {
 
     @OptionGroup var options: OptionsLimited
 
+    @Flag(
+      name: [.customLong("force"), .customShort("F")],
+      help: "Recompile even if the binary already exists."
+    )
+    var force: Bool = false
+
     mutating func run() {
       let environment = ProcessInfo.processInfo.environment
       let cmdstan: String
@@ -478,6 +491,7 @@ extension SwiftStan {
       let result = ulamPipeline(model: modelName,
                                 cmdstan: cmdstan,
                                 verbose: options.verbose,
+                                force: force,
                                 arguments: options.values)
       printFinalResult(result)
     }
@@ -571,8 +585,6 @@ extension SwiftStan {
       }
     }
 
-    /// Phase 3 demo: binomial logistic regression with a truncated half-normal
-    /// prior on the slope.
     static func binomialDemo() -> UlamModel {
       let data: UlamData = [
         "successes": .integer([2, 3, 1, 4, 5, 6, 7, 8]),
@@ -587,20 +599,6 @@ extension SwiftStan {
       }
     }
 
-    /// Phase 5.5 Slice F demo: varying *slopes* — the same vector-
-    /// parameter machinery Phase 5 introduced for varying intercepts,
-    /// but acting as the coefficient of a real-typed predictor
-    /// (`b[group]*x`). Slice D's loop-emission body translates the
-    /// `vector * vector` shape into a per-row `for (i in 1:N)` body
-    /// (`b[group[i]]*x[i]`), so the generated `.stan` is valid even
-    /// though Stan rejects the canonical vectorised form.
-    ///
-    /// `stan ulam --model VaryingSlopes` compiles + samples through
-    /// cmdstan. No end-to-end artifact test in the suite — the
-    /// synthetic dataset is sparse enough that the default
-    /// `num_chains=4 num_samples=1000` would dominate the unit-test
-    /// runtime; the source generation is covered by
-    /// `varyingSlopesBernoulliMatchesGolden`.
     static func varyingSlopesDemo() -> UlamModel {
       let data: UlamData = [
         "y":     .integer([0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0]),

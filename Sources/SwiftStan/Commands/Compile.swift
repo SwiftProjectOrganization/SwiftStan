@@ -11,7 +11,8 @@ public func compile(model: String = "bernoulli",
                     arguments: [String] = [],
                     cmdstan: String,
                     verbose: Bool = false,
-                    install: Bool = false) -> (String, String) {
+                    install: Bool = false,
+                    force: Bool = false) -> (String, String) {
 
   let fileManager = FileManager.default
   let paths = casePaths(for: model)
@@ -37,17 +38,15 @@ public func compile(model: String = "bernoulli",
           let binaryPath = dirUrl.path + "/" + model
           if !fileManager.fileExists(atPath: binaryPath) {
             result = ("Compilation needed.", "")
+          } else if force {
+            try? fileManager.removeItem(atPath: binaryPath)
+            result = ("Compilation needed.", "")
           } else {
-            if result.0 != "Stan model file has not changed, no compilation needed." {
-              return ("Found existing binary. Skipping compilation.", "")
-            } else {
-              result = ("Compilation needed.", "")
-            }
+            return ("Found existing binary. Skipping compilation.", "")
           }
         }
       } else {
-        print(("", "File \(filePath) not found."))
-        exit(9)
+        return ("", "File \(filePath) not found.")
       }
     }
   }
@@ -61,13 +60,13 @@ public func compile(model: String = "bernoulli",
   } else {
     if result.1 != "" {
       printResult(result)
-      exit(8) // Check for <name>.stan failed
+      return result // Check for <name>.stan failed
     }
   }
 
   if result.1 != "" {
     printResult(result)
-    exit(1) // Compilation failed
+    return result // Compilation failed
   } else {
     printResult(result)
   }

@@ -700,7 +700,7 @@ extension SwiftStan {
   struct Test: ParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "test",
-      abstract: "Test the CLI functions.",
+      abstract: "Test the cmdstan CLI functions.",
     )
     
     // The `@OptionGroup` attribute includes the flags, options, and

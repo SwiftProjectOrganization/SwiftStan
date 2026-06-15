@@ -191,3 +191,4 @@ Leave this section and these rules in CLAUDE.md and use them as overall guidance
 6. **Read Before You Write**.
 7. **Checkpoint Multi-Step Operations**.
 8. **Fail Loud**.
+9. **Commit to the main branch or ask first**.

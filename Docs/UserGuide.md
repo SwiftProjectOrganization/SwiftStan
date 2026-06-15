@@ -41,13 +41,13 @@ This project is work in progress!!! Work completed or still to be done can be fo
 | stancode     | alist -> .stan                         |
 | stan2alist   | .stan -> alist (inverse of stancode)   |
 | alist2dsl    | alist -> smoke driver                  |
-| dsl2stan     | smake driver -> .stan                  |
+| dsl2stan     | smoke driver -> .stan (swiftc)         |
 | ------------ | -------------------------------------- |
 ```
 **Notes**
 
 1. By default `ulam` prefers the fast in-process `stancode` path when an "<name>.alist.R" is present.                          
-2. Command `ulam` falls back to `dsl2stan` against a hand-authored "smoke driver.". See DSLManual.md.
+2. Command `ulam` falls back to `dsl2stan` against a hand-authored "smoke driver". See DSLManual.md.
 
 
 ### Shared between both pipelines

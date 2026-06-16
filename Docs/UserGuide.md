@@ -255,6 +255,27 @@ In the SwiftStan directory:
 2. `swiftstan sample -I`
 
 
+### Alist distribution names to Stan distribution names
+
+| Alist (R) name | Stan name | Notes |
+|---|---|---|
+| `dnorm(mu, sigma)` | `normal` | |
+| `dbinom(1, p)` | `bernoulli` | McElreath shorthand; collapses in lowering |
+| `dbern(p)` | `bernoulli` | Direct 1-arg form |
+| `dbinom(n, p)` | `binomial` | General case |
+| `dbeta(a, b)` | `beta` | |
+| `dexp(r)` | `exponential` | |
+| `dpois(r)` | `poisson` | |
+| `dgamma(shape, rate)` | `gamma` | |
+| `dcauchy(mu, sigma)` | `cauchy` | |
+| `dlnorm(mu, sigma)` | `lognormal` | |
+| `dunif(lower, upper)` | `uniform` | |
+| `dt(nu, mu, sigma)` | `student_t` | |
+| `dmvnorm(mu, sigma)` | `multi_normal` | |
+| `dlkjcorr(eta)` | `lkj_corr_cholesky` | Maps to Cholesky form |
+| `dmvnormchol(Mu, L_Rho, sigma)` | `multi_normal_cholesky` | Grouped-indexed only |
+| `dmvnorm2(Mu, sigma, Rho)` | `multi_normal_cholesky` | Grouped-indexed only |
+
 
 ## Additional project documentation
 

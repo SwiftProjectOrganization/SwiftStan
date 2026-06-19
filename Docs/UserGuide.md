@@ -184,7 +184,8 @@ To follow a manual, copy the case directory into your `~/Documents/<STAN_CASES>/
 
 ```bash
 cp -R Examples/howell ~/Documents/StanCases/
-swiftstan ulam --model howell
+swiftstan ulam --model howell_m4_4
+
 ```
 
 The cases routed through the in-process [`UlamManual.md`](UlamManual.md) (`stancode` path) are `radon`, `bernoulli_1`, `binomial`, `howell`, `radon_np`, `chimpanzees`, `ucb`, `cafe`, and `radon_pp`. The cases routed through the [`DSLManual.md`](DSLManual.md) (`alist2dsl` → `dsl2stan` path) are `radon_dsl`, `radon_np_dsl`, `chimpanzees_dsl`, and `cafe_dsl`. The `radon_pp_template` case demonstrates the reverse `stan2alist` path (§5.2.6): it ships a hand-written `Results/radon_pp_template.stan` (and its `.csv`) but no `.alist.R`.

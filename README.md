@@ -15,3 +15,22 @@ Documentation lives in [`Docs/`](Docs/):
 - [`CLAUDE.md`](CLAUDE.md) — Guidance for Claude.
 
 As the last item indicates, the ulam port is being worked on using Claude.
+
+# Example cases
+
+The repository ships ready-to-run inputs for every model worked through in the two manuals under the top-level `Examples/` directory. Each example is a self-contained case directory named after the model:
+
+```
+Examples/<name>/
+├── Preliminaries/     the inputs (<name>.csv, <name>.alist.R, and for the DSL cases <Name>.ulam.swift)
+└── Results/           empty — the pipeline writes its output here
+```
+
+Once SwiftStan has been installed (**see UserGuide.md**), to run the examples, copy the contents of the Examples directory into your `~/Documents/<STAN_CASES>/` root and run the pipeline against it. For example:
+
+```bash
+cd ~/Project/Swift/SwiftStan # Your path to SwiftStan
+cp -Rf Examples/* ~/Documents/StanCases/ # Your <Stan_Cases> environment variable
+swiftstan ulam --model howell_m4_4
+
+```

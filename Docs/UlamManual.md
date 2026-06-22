@@ -30,9 +30,11 @@ This step "closes the loop", it attempts to translate a .stan file back into a .
  
 ---
 
-## 2. Introduction
+## 2. Introduction to the file system setup
 
-Every model lives in its own directory under `~/Documents/<STAN_CASES>/<name>/`,
+### 1. Top level case structure
+
+Every case lives in its own directory under `~/Documents/<STAN_CASES>/<name>/`,
 split into inputs and outputs:
 
 ```
@@ -61,7 +63,7 @@ The two subcommands used in this chapter:
 
 `stancode` runs entirely in-process (no `swiftc`, no cmdstan). `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary.
 
-### Reverse direction: `stan2alist`
+### 2.2. Reverse direction: `stan2alist`
 
 `swiftstan stan2alist --model <name>` is the inverse of `stancode`: it reads
 `Results/<name>.stan` and writes a McElreath `alist()` to

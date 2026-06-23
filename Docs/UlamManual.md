@@ -60,7 +60,7 @@ Subcommands fill out the case structure, e.g.:
 |---|---|---|
 | `swiftstan stancode --model <name>` | `Preliminaries/<name>.alist.r` | `Results/<name>.stan` |
 | `swiftstan compile --model <name>` | `Results/<name>.stan` | `Results/<name>` (binary) + compile logs |
-| `swiftstan csv2json --model <name> | `Preliminaries/<name>.csv` | `Results/<name>.data.json` |
+| `swiftstan csv2json --model <name>` | `Preliminaries/<name>.csv` | `Results/<name>.data.json` |
 |---|---|---|
 
 `stancode` runs entirely in-process (no `swiftc`, no cmdstan). `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. `csv2json` creates the data input file needed for running the Stan Language Program.

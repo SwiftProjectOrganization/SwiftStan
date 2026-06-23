@@ -63,13 +63,19 @@ Subcommands fill out the case structure, e.g.:
 | `swiftstan csv2json --model <name>` | `Preliminaries/<name>.csv` | `Results/<name>.data.json` |
 |---|---|---|
 
-`stancode` runs entirely in-process (no `swiftc`, no cmdstan). `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. `csv2json` creates the data input file needed for running the Stan Language Program.
+Ulam command `stancode` runs entirely in-process (no `swiftc`, no cmdstan).
+`compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
+Ulam command `csv2json` creates the data input file needed for running the Stan Language Program.
 
 ### 2.2. Reverse direction: `stan2alist`
 
-`swiftstan stan2alist --model <name>` is the inverse of `stancode`: it reads
-`Results/<name>.stan` and writes a McElreath `alist()` to
-`Preliminaries/<name>.alist.R`. It also runs in-process. Use it to recover an
+| Command | Reads | Writes |
+|---|---|---|
+| `swiftstan stan2alist --model <name>` | `Results/<name>.stan` | `Preliminaries/<name>.alist.r` |
+|---|---|---|
+
+
+Ulam command `stan2alist` is the inverse of `stancode`: it reads `Results/<name>.stan` and writes a McElreath `alist()` to `Preliminaries/<name>.alist.R`. It also runs in-process. Use it to recover an
 editable `alist()` from a hand-written or generated Stan file.
 
 It targets a round-trip workflow, but with limitations (currently).

@@ -32,7 +32,7 @@ This step "closes the loop", it attempts to translate a .stan file back into a .
 
 ## 2. File system setup
 
-### 1. Top level case structure
+### 2.1. Top level file structure for the ulam and cmdstan pipelines.
 
 Every case lives in its own directory under `~/Documents/<STAN_CASES>/<name>/`,
 split into inputs and outputs:
@@ -47,6 +47,25 @@ split into inputs and outputs:
     ├── <name>            compiled cmdstan binary
     └── <name>.<method>.log / .error.log
 ```
+
+### 2.2. Cmdstan pipeline.
+
+The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.json` file (if the model uses data) to function
+
+| Command | Reads | Writes |
+|---|---|---|
+| `swiftstan compile --model <name>` | `Results/<name>.stan` | `Results/<name>` (binary) + compile logs |
+| `swiftstan sample --model <name>` | `Results/<name>` (binary) | `Results/<name>/ sample files + logs` |
+| `swiftstan stansummary --model <name>` | `Results/<name>/ sample files | `Results/<name>/stansummary.csv`+ logs |
+| `swiftstan laplace --model <name>` | `Results/<name>` (binary) | Results/<name>/laplace.csv`+ logs |
+| `swiftstan optimize --model <name>` | `Results/<name>` (binary) | Results/<name>/optimize.csv`+ logs |
+| `swiftstan pathfinder --model <name>` | `Results/<name>` (binary) | Results/<name>/pathfinder.csv`+ logs |
+| `swiftstan runinfo --model <name>` | `Results/<name>.config.json` | Results/<name>/stansummary.csv`+ logs |
+|---|---|---|
+
+`compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
+
+### 2.3. Ulam forward pipeline additions.
 
 The model description in `"<name>.alist.r"` borrows McElreath's `alist()` notation from the `rethinking` R package.
 
@@ -64,10 +83,9 @@ Subcommands fill out the case structure, e.g.:
 |---|---|---|
 
 Ulam command `stancode` runs entirely in-process (no `swiftc`, no cmdstan).
-`compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
 Ulam command `csv2json` creates the data input file needed for running the Stan Language Program.
 
-### 2.2. Reverse direction: `stan2alist`
+### 2.4. Ulam reverse direction pipeline: `stan2alist`
 
 | Command | Reads | Writes |
 |---|---|---|

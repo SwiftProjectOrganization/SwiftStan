@@ -55,7 +55,7 @@ The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.js
 | Command | Reads | Writes |
 |---|---|---|
 | `swiftstan compile --model <name>` | `Results/<name>.stan` | `Results/<name>` (binary) + compile logs |
-| `swiftstan sample --model <name>` | `Results/<name>` (binary) | `Results/<name>/ sample files + logs` |
+| `swiftstan sample --model <name>` | `Results/<name>` (binary) + .json | `Results/<name>/ sample files + logs` |
 | `swiftstan stansummary --model <name>` | `Results/<name>/ sample files | `Results/<name>/stansummary.csv`+ logs |
 | `swiftstan laplace --model <name>` | `Results/<name>` (binary) | Results/<name>/laplace.csv`+ logs |
 | `swiftstan optimize --model <name>` | `Results/<name>` (binary) | Results/<name>/optimize.csv`+ logs |
@@ -65,7 +65,7 @@ The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.js
 
 `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
 
-### 2.3. Ulam forward pipeline additions.
+### 2.3. Ulam forward pipeline.
 
 The model description in `"<name>.alist.r"` borrows McElreath's `alist()` notation from the `rethinking` R package.
 
@@ -73,17 +73,20 @@ By convention **the first `~` line is the likelihood**; the remaining
 `~` lines are priors. This convention drives how the parser assigns roles when it
 lowers the `alist()` into a Stan program.
 
-Subcommands fill out the case structure, e.g.:
+Ulam forward subcommands:
 
 | Command | Reads | Writes |
 |---|---|---|
 | `swiftstan stancode --model <name>` | `Preliminaries/<name>.alist.r` | `Results/<name>.stan` |
-| `swiftstan compile --model <name>` | `Results/<name>.stan` | `Results/<name>` (binary) + compile logs |
 | `swiftstan csv2json --model <name>` | `Preliminaries/<name>.csv` | `Results/<name>.data.json` |
+| `swiftstan alist2dsl --model <name>` | `Preliminaries/<name>.alist.r` | `Preliminaries/<Name>.ulam.swift` |
+| `swiftstan dsl2stan --model <name>` | `Preliminaries/<Name>.ulam.swift` | `Results/<name>.stan` |
 |---|---|---|
 
 Ulam command `stancode` runs entirely in-process (no `swiftc`, no cmdstan).
 Ulam command `csv2json` creates the data input file needed for running the Stan Language Program.
+Ulam command `alist2dsl` creates a "smoke driver" Swift program and is described in the DSLManual.
+Ulam command `dsl2stan` runs a "smoke driver" (Swift) program and is described in the DSLManual.
 
 ### 2.4. Ulam reverse direction pipeline: `stan2alist`
 

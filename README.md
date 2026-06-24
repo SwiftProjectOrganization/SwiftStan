@@ -18,7 +18,7 @@ As the last item indicates, the ulam port is being worked on using Claude.
 
 # Example cases
 
-The repository contains ready-to-run input files for several of the models used in the ulam and DSL manuals and also models from "Statistical Rethinking", typically ending with ```"..._m[n]_[n]"`, e.g. "milk_m5_7". Those can be found in the top-level `Examples/` directory. Each example is a self-contained case directory named after the model:
+The repository contains ready-to-run input files for several of the models used in the ulam and DSL manuals and also models from "Statistical Rethinking", typically ending wit``h "<name>_m[n]_[n]", e.g. "milk_m5_7". Those can be found in the top-level `Examples/` directory. Each example is a self-contained case directory named after the model:
 
 ```
 Examples/<name>/

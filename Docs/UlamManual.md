@@ -35,7 +35,7 @@ This step "closes the loop", it attempts to translate a .stan file back into a .
 ### 2.1. Top level file structure for the ulam and cmdstan pipelines.
 
 Every case lives in its own directory under `~/Documents/<STAN_CASES>/<name>/`,
-split into inputs and outputs:
+split into preliminaries and results:
 
 ```
 ~/Documents/StanCases/<name>/
@@ -50,7 +50,7 @@ split into inputs and outputs:
 
 ### 2.2. Cmdstan pipeline.
 
-The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.json` file (if the model uses data) to function
+The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.json` file (if the model uses data) to function.
 
 | Command | Reads | Writes |
 |---|---|---|
@@ -2138,3 +2138,5 @@ The pipeline and this manual are still growing. Planned additions:
 - [`DSLManual.md`](DSLManual.md) — the same examples via the DSL pipeline
   (`alist2dsl` → `dsl2stan`); produces identical Stan source.
 - [`UserGuide.md`](UserGuide.md) — project overview, setup, and environment configuration.
+
+---

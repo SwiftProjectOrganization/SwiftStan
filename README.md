@@ -15,6 +15,8 @@ Documentation lives in [`Docs/`](Docs/):
 - [`CLAUDE.md`](CLAUDE.md) — Guidance for Claude.
 
 As the last item indicates, the ulam port is being worked on using Claude.
+---
+---
 
 # Example cases
 
@@ -34,3 +36,4 @@ cp -Rf Examples/* ~/Documents/StanCases/ # Your <Stan_Cases> environment variabl
 swiftstan ulam --model howell_m4_4
 
 ```
+---

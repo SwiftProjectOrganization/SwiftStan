@@ -7,6 +7,7 @@
 2. Hosting a port of [McElreath](https://www.routledge.com/Statistical-Rethinking-A-Bayesian-Course-with-Examples-in-R-and-STAN/McElreath/p/book/9780367139919)'s R implementation ulam() in [rethinking](https://github.com/rmcelreath/rethinking) to Swift.
 
 This project is work in progress!!! Work completed or still to be done can be found in [TODO](https://github.com/SwiftProjectOrganization/Stan/blob/main/Docs/TODO.md). Some additional technical details can be found in [CLAUDE](https://github.com/SwiftProjectOrganization/Stan/blob/main/CLAUDE.md). Lots of testing and more examples are needed for the ulam pipeline.
+---
 
 
 ## Supported functionality  

@@ -6,7 +6,7 @@
 //  `Methods/RunStanSummary.swift`. Verifies the runinfo-first /
 //  glob-backup contract for stansummary and getSampleResult without
 //  paying the cost of an end-to-end cmdstan sample — each test
-//  synthesises a `<name>_output_config.json` plus matching chain CSV
+//  synthesises a `<name>.config.json` plus matching chain CSV
 //  stubs in a per-test case dir, exercises the helper, and asserts the
 //  returned URL list (or nil).
 //
@@ -20,7 +20,7 @@ struct RunInfoChainsTests {
   init() { _ = TestCaseRootBootstrap.install }
 
 
-  /// Write a minimal `<name>_output_config.json` with the given
+  /// Write a minimal `<name>.config.json` with the given
   /// num_chains + starting id under method=sample. All non-essential
   /// nested fields (`adapt`, `algorithm`, …) carry default-ish values
   /// just to satisfy the `Decodable` shape — the helper only reads
@@ -75,7 +75,7 @@ struct RunInfoChainsTests {
       "stancflags": ""
     }
     """
-    let url = dirUrl.appendingPathComponent("\(modelName)_output_config.json")
+    let url = dirUrl.appendingPathComponent("\(modelName).config.json")
     try json.write(to: url, atomically: true, encoding: .utf8)
   }
 
@@ -201,7 +201,7 @@ struct RunInfoChainsTests {
     }
     """
     try json.write(
-      to: dir.appendingPathComponent("\(model)_output_config.json"),
+      to: dir.appendingPathComponent("\(model).config.json"),
       atomically: true, encoding: .utf8)
 
     #expect(chainsFromRunInfo(dirUrl: dir, modelName: model) == nil)

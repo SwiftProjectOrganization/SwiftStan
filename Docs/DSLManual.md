@@ -412,7 +412,7 @@ produces, and the per-method logs:
 ├── radon_dsl_output_2.csv
 ├── radon_dsl_output_3.csv
 ├── radon_dsl_output_4.csv
-├── radon_dsl_output_config.json
+├── radon_dsl.config.json
 ├── radon_dsl.samples.csv           ← cleaned: all chains merged
 ├── radon_dsl_stansummary.csv       raw stansummary output
 ├── radon_dsl.stansummary.csv       ← cleaned stansummary

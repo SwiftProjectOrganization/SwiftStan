@@ -29,7 +29,7 @@ This project is work in progress!!! Work completed or still to be done can be fo
 ```
 **Notes**
 
-1. The option `runinfo` parses the "<name>.output.config.json" file which is by default written during the `sample` step. A slightly simplified version is stored as "<name>.runinfo.json". Currently it is used by `stansummary` to obtain the number of chains created by `sample`.
+1. The `runinfo` command reads `Results/<name>.config.json` (written by `sample`, which renames cmdstan's `<name>_output_config.json`) and cleans it in place — stripping absolute paths to basenames and sorting keys. It is also used internally by `stansummary` to determine the number of chains created by `sample`.
 
  
 ### Ulam pipeline related commands
@@ -168,7 +168,7 @@ Every cmdstan call (`compile`, `sample`, `optimize`, `laplace`, `pathfinder`, `s
 
 Both files are written on every run (zero bytes means "ran but emitted nothing"); each invocation overwrites the previous log. cmdstan emits most diagnostics (warmup banners, divergence messages, treedepth warnings) to **stdout**, so the `.log` file is normally where to look first; `.error.log` is reserved for hard failures and a few compile-time messages.
 
-The `sample` command uses `save_cmdstan_config=true` by default and writes "<Name>_output_config.json" to the Results directory. The `runinfo` subcommand reads that JSON into a typed `RunInfo` value and writes a slightly simplified, "<name>.runinfo.json" to Results.
+The `sample` command uses `save_cmdstan_config=true` by default. cmdstan writes `<name>_output_config.json`; `sample` renames it to `<name>.config.json`. The `runinfo` subcommand reads that file and cleans it in place (absolute paths → basenames, sorted keys).
 
 
 ## Example cases
@@ -224,7 +224,7 @@ SUBCOMMANDS:
   alist2dsl                 Translate Preliminaries/<name>.alist.R into  Preliminaries/<Name>.ulam.swift.
   stancode                  Translate Preliminaries/<name>.alist.R straight to Results/<name>.stan (in-process, no swiftc).
   stan2alist                Reverse-translate Results/<name>.stan into Preliminaries/<name>.alist.R (inverse of stancode).
-  runinfo                   Read Results/<name>_output_config.json and write a cleaned Results/<name>.runinfo.json.
+  runinfo                   Clean Results/<name>.config.json in place (basenames, sorted keys).
   ulam                      Run one of the built-in ulam DSL demos (--model Bernoulli|Poisson|Binomial|UCB|Dmvnorm).
   test (default)            Test the CLI functions.
 

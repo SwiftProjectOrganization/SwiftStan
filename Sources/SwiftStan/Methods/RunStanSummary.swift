@@ -48,8 +48,9 @@ public func stanSummary(dirUrl: URL,
 }
 
 /// Authoritative chain-file list derived from
-/// `<name>_output_config.json` (cmdstan's emitted config, parsed via
-/// `readRunInfo`). Honours the `id` offset so batched-run workflows
+/// `<name>.config.json` (`StanSample` renames cmdstan's emitted
+/// `_output_config.json` to this canonical name after each run).
+/// Honours the `id` offset so batched-run workflows
 /// (chains 5..7 in a second invocation) get the right URLs back, not
 /// chains 1..3. Returns the URLs that *exist on disk*, in id order; a
 /// partial run (4 expected, 3 present) returns the 3 and prints a

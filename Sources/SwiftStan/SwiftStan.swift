@@ -397,7 +397,7 @@ extension SwiftStan {
   struct Runinfo: ParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "runinfo",
-      abstract: "Read Results/<name>_output_config.json and write a cleaned Results/<name>.runinfo.json.")
+      abstract: "Clean Results/<name>.config.json in place (basenames, sorted keys).")
 
     @OptionGroup var options: OptionsLimited
 

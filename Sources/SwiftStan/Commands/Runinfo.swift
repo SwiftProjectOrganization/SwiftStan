@@ -2,9 +2,9 @@
 //  Runinfo.swift
 //  SwiftStan
 //
-//  CLI-side wrapper for reading the cmdstan config JSON written by a
-//  prior `sample` invocation (with `save_cmdstan_config=true`) and
-//  writing a cleaned, portable `<name>.runinfo.json` alongside.
+//  CLI-side wrapper for reading `Results/<name>.config.json` (written
+//  by `sample`, which renames cmdstan's `_output_config.json`) and
+//  cleaning it in place (basenames, sorted keys).
 //
 //  Pure-Swift — no cmdstan shell-out, no `Methods/` layer entry. Same
 //  shape as `csv2json` / `stancode`.
@@ -13,9 +13,9 @@
 import Foundation
 
 /// Top-level entry for the `runinfo` CLI subcommand. Reads
-/// `Results/<name>_output_config.json`, writes
-/// `Results/<name>.runinfo.json` with absolute paths stripped to
-/// basenames. Returns the URL of the cleaned file.
+/// `Results/<name>.config.json` and rewrites it in place with absolute
+/// paths stripped to basenames + sorted keys. Returns the URL of the
+/// cleaned file.
 @discardableResult
 public func runinfo(model: String, verbose: Bool = false) throws -> URL {
   let paths = casePaths(for: model)

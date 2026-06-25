@@ -2,12 +2,12 @@
 //  RunInfoIO.swift
 //  SwiftStan
 //
-//  Reads `<Results>/<name>_output_config.json` — the JSON cmdstan emits
-//  when `save_cmdstan_config=true` (currently set by `StanSample.swift`)
-//  — into a typed `RunInfo` value. A second entry point writes a
-//  cleaned-up `<name>.runinfo.json` alongside (paths stripped to
-//  basenames, sorted keys, pretty-printed) so the file is portable
-//  across machines.
+//  Reads `<Results>/<name>.config.json` — cmdstan emits
+//  `<name>_output_config.json` when `save_cmdstan_config=true`, and
+//  `StanSample.swift` renames it to `<name>.config.json` right after
+//  the run. A second entry point cleans that same file in place
+//  (paths stripped to basenames, sorted keys, pretty-printed) so the
+//  file is portable across machines.
 //
 //  Filename note: this file is `RunInfoIO.swift` (not `RunInfo.swift`)
 //  to avoid an APFS case-insensitive `.o` collision with
@@ -253,7 +253,7 @@ public enum RunInfoError: Error, CustomStringConvertible {
   public var description: String {
     switch self {
     case .fileNotFound(let p):
-      return "runinfo: \(p) not found (run `sample` with save_cmdstan_config=true first)"
+      return "runinfo: \(p) not found (run `sample` first — it writes `<name>.config.json`)"
     case .decodeFailed(let e):
       return "runinfo: could not decode JSON: \(e)"
     case .unsupportedMethod(let m):
@@ -268,9 +268,9 @@ public enum RunInfoError: Error, CustomStringConvertible {
 
 // MARK: - Entry points
 
-/// Read `<dir>/<modelName>_output_config.json` into a typed `RunInfo`.
+/// Read `<dir>/<modelName>.config.json` into a typed `RunInfo`.
 public func readRunInfo(dirUrl: URL, modelName: String) throws -> RunInfo {
-  let url = dirUrl.appendingPathComponent("\(modelName)_output_config.json")
+  let url = dirUrl.appendingPathComponent("\(modelName).config.json")
   guard FileManager.default.fileExists(atPath: url.path) else {
     throw RunInfoError.fileNotFound(url.path)
   }
@@ -281,18 +281,18 @@ public func readRunInfo(dirUrl: URL, modelName: String) throws -> RunInfo {
   catch { throw RunInfoError.decodeFailed(underlying: error) }
 }
 
-/// Read the raw cmdstan config, strip the absolute-path prefix from
-/// `data.file` and `output.file` down to their basenames, and write
-/// `<dir>/<modelName>.runinfo.json` with sorted keys + pretty-printing
-/// via the hand-rolled `RunInfoMarshaller` (so e.g. `0.05` stays
-/// `0.05`, not `0.050000000000000003`).
+/// Strip absolute-path prefixes from `data.file` and `output.file` down
+/// to their basenames and rewrite `<dir>/<modelName>.config.json` in
+/// place with sorted keys + pretty-printing via the hand-rolled
+/// `RunInfoMarshaller` (so e.g. `0.05` stays `0.05`, not
+/// `0.050000000000000003`).
 @discardableResult
 public func writeCleanRunInfo(dirUrl: URL, modelName: String) throws -> URL {
-  let inURL = dirUrl.appendingPathComponent("\(modelName)_output_config.json")
-  guard FileManager.default.fileExists(atPath: inURL.path) else {
-    throw RunInfoError.fileNotFound(inURL.path)
+  let configURL = dirUrl.appendingPathComponent("\(modelName).config.json")
+  guard FileManager.default.fileExists(atPath: configURL.path) else {
+    throw RunInfoError.fileNotFound(configURL.path)
   }
-  let raw = try Data(contentsOf: inURL)
+  let raw = try Data(contentsOf: configURL)
   guard var dict = try JSONSerialization.jsonObject(with: raw) as? [String: Any] else {
     throw RunInfoError.malformedJSON("top-level value is not an object")
   }
@@ -305,8 +305,7 @@ public func writeCleanRunInfo(dirUrl: URL, modelName: String) throws -> URL {
     dict["output"] = o
   }
   let cleaned = RunInfoMarshaller.encodeJSON(dict)
-  let outURL = dirUrl.appendingPathComponent("\(modelName).runinfo.json")
-  do { try cleaned.write(to: outURL, options: .atomic) }
-  catch { throw RunInfoError.writeFailed(outURL, underlying: error) }
-  return outURL
+  do { try cleaned.write(to: configURL, options: .atomic) }
+  catch { throw RunInfoError.writeFailed(configURL, underlying: error) }
+  return configURL
 }

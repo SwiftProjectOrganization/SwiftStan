@@ -2,7 +2,7 @@
 //  RunInfoMarshaller.swift
 //  SwiftStan
 //
-//  Hand-rolled JSON writer for the cleaned `<name>.runinfo.json`,
+//  Hand-rolled JSON writer for the cleaned `<name>.config.json`,
 //  mirroring `Ulam/Data/DataMarshaller.swift`. The motivation is the
 //  same: Swift's `String(_:)` on a `Double` emits the shortest
 //  round-trippable form (e.g. `"0.05"`), whereas

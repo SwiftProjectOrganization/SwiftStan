@@ -55,15 +55,17 @@ The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.js
 | Command | Reads | Writes |
 |---|---|---|
 | `swiftstan compile --model <name>` | `Results/<name>.stan` | `Results/<name>` (binary) + compile logs |
-| `swiftstan sample --model <name>` | `Results/<name>` (binary) + .json | `Results/<name>/ sample files + logs` |
+| `swiftstan sample --model <name>` | `Results/<name>` (binary) + data.json file| `Results/<name>/ sample files + logs`|
 | `swiftstan stansummary --model <name>` | `Results/<name>/ sample files | `Results/<name>/stansummary.csv`+ logs |
-| `swiftstan laplace --model <name>` | `Results/<name>` (binary) | Results/<name>/laplace.csv`+ logs |
-| `swiftstan optimize --model <name>` | `Results/<name>` (binary) | Results/<name>/optimize.csv`+ logs |
-| `swiftstan pathfinder --model <name>` | `Results/<name>` (binary) | Results/<name>/pathfinder.csv`+ logs |
-| `swiftstan runinfo --model <name>` | `Results/<name>.config.json` | Results/<name>/stansummary.csv`+ logs |
+| `swiftstan laplace --model <name>` | `Results/<name>` (binary) | `Results/<name>/laplace.csv`+ logs |
+| `swiftstan optimize --model <name>` | `Results/<name>` (binary) | `Results/<name>/optimize.csv`+ logs |
+| `swiftstan pathfinder --model <name>` | `Results/<name>` (binary) | `Results/<name>/pathfinder.csv`+ logs |
+| `swiftstan runinfo --model <name>` | `Results/<name>.config.json` |  No output|
 |---|---|---|
 
 `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
+`sample` needs, in addition to a compiled .stan file, and if needed by the model, a `<name>.data.json` file.
+`runinfo` reads the Results/<name>.config.json files. Currently only used in `stansummary` to find the number of chains.
 
 ### 2.3. Ulam forward pipeline.
 
@@ -411,7 +413,7 @@ produces, and the per-method logs:
 ├── radon_output_2.csv
 ├── radon_output_3.csv
 ├── radon_output_4.csv
-├── radon_output_config.json
+├── radon.config.json
 ├── radon.samples.csv           ← cleaned: all chains merged
 ├── radon_stansummary.csv       raw stansummary output
 ├── radon.stansummary.csv       ← cleaned stansummary
@@ -604,7 +606,7 @@ name,mean,mcse,stddev,mad,p05,p50,p95,ess_bulk,ess_tail,ess_bulk_per_s,R_hat
 
 After sampling, `Results/` mirrors the radon layout (§3.1.5) — the compiled binary,
 the Stan source, `bernoulli_1.data.json`, the four raw `bernoulli_1_output_[1..4].csv`
-chains plus `bernoulli_1_output_config.json`, the cleaned `bernoulli_1.samples.csv`
+chains plus `bernoulli_1.config.json`, the cleaned `bernoulli_1.samples.csv`
 and `bernoulli_1.stansummary.csv`, the raw `bernoulli_1_stansummary.csv`, and the
 per-method `.log` / `.error.log` files.
 
@@ -806,7 +808,7 @@ name,mean,mcse,stddev,mad,p05,p50,p95,ess_bulk,ess_tail,ess_bulk_per_s,R_hat
 
 After sampling, `Results/` mirrors the radon layout (§3.1.5) — the compiled binary,
 the Stan source, `binomial.data.json`, the four raw `binomial_output_[1..4].csv`
-chains plus `binomial_output_config.json`, the cleaned `binomial.samples.csv` and
+chains plus `binomial.config.json`, the cleaned `binomial.samples.csv` and
 `binomial.stansummary.csv`, the raw `binomial_stansummary.csv`, and the per-method
 `.log` / `.error.log` files.
 

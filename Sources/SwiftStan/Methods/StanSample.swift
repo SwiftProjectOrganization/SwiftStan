@@ -26,6 +26,9 @@ public func stanSample(dirUrl: URL,
   for stale in chainOutputFiles(dirUrl: dirUrl, modelName: modelName) {
     try? fileManager.removeItem(at: stale)
   }
+  // Wipe stale config so a failed run can't leave the previous run's
+  // chain count visible to chainsFromRunInfo.
+  try? fileManager.removeItem(at: dirUrl.appendingPathComponent("\(modelName).config.json"))
 
   var args = ["sample"]
   args.append(contentsOf: arguments)
@@ -44,10 +47,20 @@ public func stanSample(dirUrl: URL,
   if verbose {
     print(args)
   }
-  
-  return swiftSyncFileExec(program: binaryPath,
-                           arguments: args,
-                           method: "sample",
-                           logsDir: dirUrl,
-                           logsBase: "\(modelName).sample")
+
+  let result = swiftSyncFileExec(program: binaryPath,
+                                 arguments: args,
+                                 method: "sample",
+                                 logsDir: dirUrl,
+                                 logsBase: "\(modelName).sample")
+
+  // Rename cmdstan's `<name>_output_config.json` to `<name>.config.json`
+  // so all readers (runinfo, chainsFromRunInfo) use a single canonical name.
+  let rawConfig  = dirUrl.appendingPathComponent("\(modelName)_output_config.json")
+  let cleanConfig = dirUrl.appendingPathComponent("\(modelName).config.json")
+  if fileManager.fileExists(atPath: rawConfig.path) {
+    try? fileManager.moveItem(at: rawConfig, to: cleanConfig)
+  }
+
+  return result
 }

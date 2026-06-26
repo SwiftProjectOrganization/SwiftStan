@@ -1,10 +1,10 @@
 //
-//  StanGeneratedQuantities.swift
+//  StanGenerated_Quantities.swift
 //
 
 import Foundation
 
-public func stanGeneratedQuantities(dirUrl: URL,
+public func stanGenerated_Quantities(dirUrl: URL,
                                     modelName: String,
                                     chains: [URL],
                                     arguments: [String] = [],

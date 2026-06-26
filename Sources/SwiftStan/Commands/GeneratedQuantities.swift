@@ -1,10 +1,10 @@
 //
-//  GeneratedQuantities.swift
+//  Generated_Quantities.swift
 //
 
 import Foundation
 
-public func generatedQuantities(model: String = "bernoulli",
+public func generated_Quantities(model: String = "bernoulli",
                                 arguments: [String] = [],
                                 cmdstan: String,
                                 verbose: Bool = false) -> (String, String) {
@@ -27,7 +27,7 @@ public func generatedQuantities(model: String = "bernoulli",
     return ("", "No \(model)_output*.csv chains found in \(dirUrl.path) — run `sample` first.")
   }
 
-  let result = stanGeneratedQuantities(dirUrl: dirUrl,
+  let result = stanGenerated_Quantities(dirUrl: dirUrl,
                                        modelName: model,
                                        chains: chains,
                                        arguments: arguments,
@@ -35,7 +35,7 @@ public func generatedQuantities(model: String = "bernoulli",
                                        verbose: verbose)
 
   if result.1 == "" {
-    let result = getGeneratedQuantitiesResult(dirUrl: dirUrl,
+    let result = getGenerated_QuantitiesResult(dirUrl: dirUrl,
                                               modelName: model,
                                               chainCount: chains.count)
     if verbose {

@@ -251,10 +251,10 @@ enum BlockEmitter {
   /// Emit the `generated quantities {}` block for posterior-predictive draws.
   /// Returns nil when the model has no `generatedQuantity` statements, keeping
   /// models without a `sim()` line byte-identical to their previous output.
-  static func generatedQuantitiesBlock(_ inferred: InferredModel) -> String? {
-    if inferred.generatedQuantities.isEmpty { return nil }
+  static func generated_QuantitiesBlock(_ inferred: InferredModel) -> String? {
+    if inferred.generated_Quantities.isEmpty { return nil }
     var lines = ["generated quantities {"]
-    for gq in inferred.generatedQuantities {
+    for gq in inferred.generated_Quantities {
       let rng  = DistributionCatalog.name(gq.distribution) + "_rng"
       let args = DistributionCatalog.args(gq.distribution)
       let decl = DistributionCatalog.isDiscrete(gq.distribution) ? "array[N] int" : "vector[N]"
@@ -478,7 +478,7 @@ enum BlockEmitter {
         // emitting any Stan source.
         break
       case .generatedQuantity:
-        // Emitted by generatedQuantitiesBlock, not the model block.
+        // Emitted by generated_QuantitiesBlock, not the model block.
         break
       case .likelihood(let lhs, let dist, let trunc, let useLpdf):
         likelihoods.append(try emitSampling(lhs: lhs, distribution: dist,

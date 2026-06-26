@@ -43,7 +43,7 @@ public enum StanCodeGenerator {
       sections.append(tp)
     }
     sections.append(modelBlock)
-    if let gq = BlockEmitter.generatedQuantitiesBlock(inferred) {
+    if let gq = BlockEmitter.generated_QuantitiesBlock(inferred) {
       sections.append(gq)
     }
     return sections.joined(separator: "\n")

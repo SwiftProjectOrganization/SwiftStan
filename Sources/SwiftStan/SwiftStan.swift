@@ -22,7 +22,7 @@ struct SwiftStan: ParsableCommand {
     // Pass an array to `subcommands` to set up a nested tree of subcommands.
     // With language support for type-level introspection, this could be
     // provided by automatically finding nested `ParsableCommand` types.
-    subcommands: [Compile.self, Sample.self, Optimize.self, Pathfinder.self, Laplace.self, Generatedquantities.self, Stansummary.self, Csv2Json.self, Dsl2Stan.self, Alist2Dsl.self, Stancode.self, Stan2Alist.self, Runinfo.self, Ulam.self, Test.self],
+    subcommands: [Compile.self, Sample.self, Optimize.self, Pathfinder.self, Laplace.self, Generated_Quantities.self, Stansummary.self, Csv2Json.self, Dsl2Stan.self, Alist2Dsl.self, Stancode.self, Stan2Alist.self, Runinfo.self, Ulam.self, Test.self],
     
     // A default subcommand, when provided, is automatically selected if a
     // subcommand is not given on the command line.
@@ -296,7 +296,7 @@ extension SwiftStan {
 }
 
 extension SwiftStan {
-  struct Generatedquantities: ParsableCommand {
+  struct Generated_Quantities: ParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "generated_quantities",
       abstract: "Run cmdstan's generate_quantities on draws from a prior sample run.")
@@ -317,7 +317,7 @@ extension SwiftStan {
         }
       }
 
-      let result = generatedQuantities(model: options.model ?? "bernoulli",
+      let result = generated_Quantities(model: options.model ?? "bernoulli",
                                        arguments: options.values,
                                        cmdstan: cmdstan,
                                        verbose: options.verbose

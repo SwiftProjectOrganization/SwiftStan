@@ -224,7 +224,7 @@ public enum Statement: Hashable, Sendable {
   /// discrete distributions) in the `generated quantities` block.
   /// Posterior-predictive replication over the observed data — same `N`
   /// as the fitted model. Not visible in the model block. Emitted
-  /// by `BlockEmitter.generatedQuantitiesBlock` and appended last by
+  /// by `BlockEmitter.generated_QuantitiesBlock` and appended last by
   /// `StanCodeGenerator.assemble`. Sourced from `y_tilde <- sim(dnorm(...))`
   /// alist syntax. The distribution must reference only parameters and
   /// observed data — not model-block locals (Link/Deterministic LHSes).

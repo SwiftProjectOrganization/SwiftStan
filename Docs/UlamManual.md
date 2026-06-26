@@ -23,10 +23,10 @@ The DSL/swiftc workflow is described in the DSLManula.md.
 
 3. **Posterior-predictive workflow**:
 ```
-stancode (with sim() line)  →  compile  →  sample  →  generatedquantities
+stancode (with sim() line)  →  compile  →  sample  →  generated_quantities
 ```
 Adding a `sim()` line to an alist (§2.3.1) causes `stancode` to emit a
-`generated quantities` block. After sampling, `generatedquantities` re-runs the
+`generated quantities` block. After sampling, `generated_quantities` re-runs the
 compiled binary over the existing draws and writes `<name>.generated_quantities.csv`.
 
 4. **Reverse workflow**:
@@ -68,13 +68,13 @@ The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.js
 | `swiftstan optimize --model <name>` | `Results/<name>` (binary) | `Results/<name>/optimize.csv`+ logs |
 | `swiftstan pathfinder --model <name>` | `Results/<name>` (binary) | `Results/<name>/pathfinder.csv`+ logs |
 | `swiftstan runinfo --model <name>` | `Results/<name>.config.json` |  No output|
-| `swiftstan generatedquantities --model <name>` | `Results/<name>` (binary) + sample CSVs | `Results/<name>.generated_quantities.csv` + logs |
+| `swiftstan generated_quantities --model <name>` | `Results/<name>` (binary) + sample CSVs | `Results/<name>.generated_quantities.csv` + logs |
 |---|---|---|
 
 `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
 `sample` needs, in addition to a compiled .stan file, and if needed by the model, a `<name>.data.json` file.
 `runinfo` reads the Results/<name>.config.json files. Currently only used in `stansummary` to find the number of chains.
-`generatedquantities` runs cmdstan's standalone `generate_quantities` method over the existing sample draws. The `.stan` file must contain a `generated quantities` block — add a `sim()` line to the alist (§2.3.1) before running `stancode`, or hand-edit the `.stan` directly.
+`generated_quantities` runs cmdstan's standalone `generate_quantities` method over the existing sample draws. The `.stan` file must contain a `generated quantities` block — add a `sim()` line to the alist (§2.3.1) before running `stancode`, or hand-edit the `.stan` directly.
 
 ### 2.3. Ulam forward pipeline.
 
@@ -142,7 +142,7 @@ swiftstan stancode --model <name>     # emits .stan with generated quantities bl
 swiftstan csv2json --model <name>     # (if not already done)
 swiftstan compile --model <name>      # (if not already done)
 swiftstan sample --model <name>       # draws posterior samples
-swiftstan generatedquantities --model <name>  # re-runs GQ block → <name>.generated_quantities.csv
+swiftstan generated_quantities --model <name>  # re-runs GQ block → <name>.generated_quantities.csv
 ```
 
 ### 2.4. Ulam reverse direction pipeline: `stan2alist`
@@ -2153,7 +2153,7 @@ name,mean,mcse,stddev,mad,p05,p50,p95,ess_bulk,ess_tail,ess_bulk_per_s,R_hat
 After sampling, `Results/` mirrors the radon layout (§3.1.5), with `radon_pp.*`
 filenames.
 
-#### 5.2.8 Adding posterior-predictive draws with `sim()` and `generatedquantities`
+#### 5.2.8 Adding posterior-predictive draws with `sim()` and `generated_quantities`
 
 The template in §5.2.2 had a `generated quantities` block that `stan2alist` dropped. You can add the equivalent back to the alist using the `sim()` syntax (§2.3.1). Edit `radon_pp.alist.R` to add one line:
 
@@ -2183,11 +2183,11 @@ generated quantities {
 }
 ```
 
-Recompile (the `.stan` changed) and run `generatedquantities` on the existing draws:
+Recompile (the `.stan` changed) and run `generated_quantities` on the existing draws:
 
 ```bash
 swiftstan compile --model radon_pp
-swiftstan generatedquantities --model radon_pp
+swiftstan generated_quantities --model radon_pp
 ```
 
 ```

@@ -129,8 +129,8 @@ struct InferredModel {
   /// Posterior-predictive draws for the `generated quantities` block.
   /// Each entry emits one `<type>[N] <name> = <dist>_rng(args);` line.
   /// Sourced from `Statement.generatedQuantity` and consumed by
-  /// `BlockEmitter.generatedQuantitiesBlock`.
-  let generatedQuantities: [(name: String, distribution: Distribution)]
+  /// `BlockEmitter.generated_QuantitiesBlock`.
+  let generated_Quantities: [(name: String, distribution: Distribution)]
 }
 
 /// Monotonic effect spec (2026-06-02): per-`MonotonicEffect`
@@ -293,7 +293,7 @@ enum DataInference {
     // Literal-n / scalarInt-n cases skip this — their upper bound is
     // already tightened at the declaration site.
     var binomialRowChecks: [(outcome: String, trials: String)] = []
-    var generatedQuantities: [(name: String, distribution: Distribution)] = []
+    var generated_Quantities: [(name: String, distribution: Distribution)] = []
 
     // 2026-06-06: cardinality-symbol collision check (TODO §4).
     //
@@ -686,7 +686,7 @@ enum DataInference {
         if !derived.contains(lhs) { derived.append(lhs) }
         for s in symbolsIn(rhs) { referenced.insert(s) }
       case .generatedQuantity(let name, let dist):
-        generatedQuantities.append((name: name, distribution: dist))
+        generated_Quantities.append((name: name, distribution: dist))
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
       }
     }
@@ -702,7 +702,7 @@ enum DataInference {
     // LHS of Link/Deterministic statements) — Stan's `generated quantities`
     // block doesn't have access to model-block local vectors.
     let derivedSet = Set(derived)
-    for gq in generatedQuantities {
+    for gq in generated_Quantities {
       for sym in DistributionCatalog.symbolsReferenced(gq.distribution) {
         if derivedSet.contains(sym) {
           throw DataInferenceError.generatedQuantityReferencesLocal(
@@ -901,7 +901,7 @@ enum DataInference {
       squareMatrixColumns: squareMatrixColumns,
       initValues: initValues,
       binomialRowChecks: binomialRowChecks,
-      generatedQuantities: generatedQuantities
+      generated_Quantities: generated_Quantities
     )
   }
 

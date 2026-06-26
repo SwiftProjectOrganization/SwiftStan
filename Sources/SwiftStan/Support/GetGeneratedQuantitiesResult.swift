@@ -1,8 +1,8 @@
 //
-//  GetGeneratedQuantitiesResult.swift
+//  GetGenerated_QuantitiesResult.swift
 //
 //  Merges per-chain `<name>_gq_<i>.csv` raw outputs (written by
-//  stanGeneratedQuantities) into a single clean
+//  stanGenerated_Quantities) into a single clean
 //  `<name>.generated_quantities.csv`. Strips `#` comment lines;
 //  keeps the header from chain 1 and all data rows from all chains.
 //  Raw files are left intact.
@@ -10,7 +10,7 @@
 
 import Foundation
 
-public func getGeneratedQuantitiesResult(dirUrl: URL,
+public func getGenerated_QuantitiesResult(dirUrl: URL,
                                          modelName: String,
                                          chainCount: Int) -> (String, String) {
   var theResult: [String] = []

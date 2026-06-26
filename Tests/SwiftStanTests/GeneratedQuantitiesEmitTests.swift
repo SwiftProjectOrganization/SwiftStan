@@ -1,5 +1,5 @@
 //
-//  GeneratedQuantitiesEmitTests.swift
+//  Generated_QuantitiesEmitTests.swift
 //  StanTests
 //
 //  Verifies that `y_tilde <- sim(dnorm(...))` (and the discrete analogue)
@@ -13,7 +13,7 @@ import Testing
 @testable import SwiftStan
 
 @Suite("Generated quantities emission tests")
-struct GeneratedQuantitiesEmitTests {
+struct Generated_QuantitiesEmitTests {
   init() { _ = TestCaseRootBootstrap.install }
 
   // MARK: - Fixtures
@@ -162,7 +162,7 @@ struct GeneratedQuantitiesEmitTests {
 
   // MARK: - Swift DSL `Sim` node
 
-  @Test func simDSLNodeEmitsGeneratedQuantitiesBlock() throws {
+  @Test func simDSLNodeEmitsGenerated_QuantitiesBlock() throws {
     let data: UlamData = [
       "log_radon": .real([1.0, 2.0, 3.0]),
       "floor":     .real([0.0, 1.0, 0.0]),

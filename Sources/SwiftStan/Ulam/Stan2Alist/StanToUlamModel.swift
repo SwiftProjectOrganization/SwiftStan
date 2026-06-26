@@ -155,19 +155,19 @@ enum StanToUlamModel {
     }
 
     // Reconstruct generated-quantities statements from the GQ block.
-    var generatedQuantities: [Statement] = []
+    var generated_Quantities: [Statement] = []
     for stmt in program.gqStatements {
       guard case let .assignment(lhs, rhs) = stmt else { continue }
       guard let (name, dist) = reconstructGQ(lhs: lhs, rhs: rhs) else {
         warnings.append("skipped unrecognised generated quantities statement: \(lhs) = \(rhs)")
         continue
       }
-      generatedQuantities.append(.generatedQuantity(name: name, distribution: dist))
+      generated_Quantities.append(.generatedQuantity(name: name, distribution: dist))
     }
 
     // McElreath order: likelihood first (so re-classification picks the
     // outcome), then the linear model, then the priors, then GQ draws last.
-    let statements = likelihoods + links + priors + generatedQuantities
+    let statements = likelihoods + links + priors + generated_Quantities
     return Result(statements: statements, warnings: warnings)
   }
 

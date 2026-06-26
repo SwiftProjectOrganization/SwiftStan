@@ -117,14 +117,14 @@ The `sim(dnorm(...))` wrapper is McElreath-style notation for a posterior-predic
 
 ```stan
 generated quantities {
-  vector[N] y_rep = normal_rng(alpha + beta*floor, sigma);
+  array[N] real y_rep = normal_rng(alpha + beta*floor, sigma);
 }
 ```
 
 **How it works:**
 
 - `sim()` wraps an ordinary `d*` distribution expression (same form as the likelihood or a prior). The inner distribution uses the catalog's RNG name: `dnorm` → `normal_rng`, `dbinom(1, p)` → `bernoulli_rng`, `dpois` → `poisson_rng`, etc.
-- Continuous distributions produce `vector[N] <name> = ...;`; discrete distributions produce `array[N] int <name> = ...;`.
+- Continuous distributions produce `array[N] real <name> = ...;`; discrete distributions produce `array[N] int <name> = ...;`. Stan's `_rng` functions with container-typed arguments return `array[] real`, not `vector`.
 - The RHS may reference only **parameters and observed data** — not model-block locals. A model-block local is the LHS of a `<-` assignment (e.g. `logit(p) <- a + b*x` makes `p` local). To draw from a logit-link model, inline the inverse link in `sim()`:
 
 ```r
@@ -2179,7 +2179,7 @@ The generated `Results/radon_pp.stan` now ends with:
 
 ```stan
 generated quantities {
-  vector[N] y_rep = normal_rng(alpha[county] + beta*floor, sigma);
+  array[N] real y_rep = normal_rng(alpha[county] + beta*floor, sigma);
 }
 ```
 

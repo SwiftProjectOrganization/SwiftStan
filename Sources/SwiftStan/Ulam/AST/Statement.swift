@@ -220,7 +220,7 @@ public enum Statement: Hashable, Sendable {
   /// `lhs <- rhs` — plain deterministic assignment.
   case deterministic(lhs: String, rhs: Expression)
 
-  /// `vector[N] <name> = <dist>_rng(args);` (or `array[N] int` for
+  /// `array[N] real <name> = <dist>_rng(args);` (or `array[N] int` for
   /// discrete distributions) in the `generated quantities` block.
   /// Posterior-predictive replication over the observed data — same `N`
   /// as the fitted model. Not visible in the model block. Emitted

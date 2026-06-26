@@ -92,7 +92,7 @@ struct Generated_QuantitiesEmitTests {
     let stan = try stancode(model)
 
     #expect(stan.contains("generated quantities {"))
-    #expect(stan.contains("vector[N] y_tilde = normal_rng(alpha + beta*floor, sigma);"))
+    #expect(stan.contains("array[N] real y_tilde = normal_rng(alpha + beta*floor, sigma);"))
     #expect(stan.contains("}"))
     // GQ block must come after the model block
     let modelRange = stan.range(of: "model {")
@@ -176,7 +176,7 @@ struct Generated_QuantitiesEmitTests {
     }
     let stan = try stancode(model)
     #expect(stan.contains("generated quantities {"))
-    #expect(stan.contains("vector[N] y_rep = normal_rng(alpha + beta*floor, sigma);"))
+    #expect(stan.contains("array[N] real y_rep = normal_rng(alpha + beta*floor, sigma);"))
   }
 
   // MARK: - Fail-loud: sim() referencing a model-block local

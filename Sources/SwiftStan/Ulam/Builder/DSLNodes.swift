@@ -581,7 +581,7 @@ public struct Inits: ModelStatement {
 ///
 /// ```stan
 /// generated quantities {
-///   vector[N] y_rep = normal_rng(alpha + beta*floor, sigma);
+///   array[N] real y_rep = normal_rng(alpha + beta*floor, sigma);
 /// }
 /// ```
 public struct Sim: ModelStatement {

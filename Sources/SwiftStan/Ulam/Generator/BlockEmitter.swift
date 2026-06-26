@@ -257,7 +257,7 @@ enum BlockEmitter {
     for gq in inferred.generated_Quantities {
       let rng  = DistributionCatalog.name(gq.distribution) + "_rng"
       let args = DistributionCatalog.args(gq.distribution)
-      let decl = DistributionCatalog.isDiscrete(gq.distribution) ? "array[N] int" : "vector[N]"
+      let decl = DistributionCatalog.isDiscrete(gq.distribution) ? "array[N] int" : "array[N] real"
       lines.append("  \(decl) \(gq.name) = \(rng)(\(args));")
     }
     lines.append("}")

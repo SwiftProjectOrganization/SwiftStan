@@ -21,6 +21,14 @@
 //  three separate `~` priors lower to the same Stan as one grouped line,
 //  so the Stan-level oracle is unaffected (see plan §9).
 //
+//  T4 (Docs/AlistTransposePlan.md): `.varyingVectorPrior` with a
+//  `.multivariateNormalCholesky` distribution is rendered as
+//  `name[idx] ~ dmvnorm2(c(names), sigma, L)` by decomposing the stored
+//  `diag_pre_multiply(sigma, L)` Cholesky arg and the `[a, b]'` mean arg.
+//  This avoids the `'` transpose character in the output and uses a
+//  distribution name (`dmvnorm2`) that `AlistParser` / `AlistLowering`
+//  can parse back through the T3 `.indexed`-LHS multivariate path.
+//
 
 import Foundation
 
@@ -73,6 +81,16 @@ enum AlistTextEmitter {
     case let .wishartPrior(name, _, nu, V):
       return "\(name) ~ dwishart(\(DistributionCatalog.arg(nu)), \(DistributionCatalog.arg(V)))"
     case let .varyingVectorPrior(name, indexedBy, _, _, dist, _, _):
+      // T4: for the Cholesky correlated-effects form, decompose the merged
+      // args and emit dmvnorm2(c(names), sigma, L) — parseable by AlistParser
+      // without any `'` character (see Docs/AlistTransposePlan.md).
+      if case let .multivariateNormalCholesky(mean, chol) = dist,
+         let rendered = renderVaryingVectorCholDist(
+           name: name, indexedBy: indexedBy,
+           meanStr: DistributionCatalog.arg(mean),
+           cholStr: DistributionCatalog.arg(chol)) {
+        return rendered
+      }
       return "\(name)[\(indexedBy)] ~ \(renderDistribution(dist))"
     case let .matrixPrior(name, _, _, dist, _, _):
       return "\(name) ~ \(renderDistribution(dist))"
@@ -105,5 +123,41 @@ enum AlistTextEmitter {
       return "dbinom(1, \(DistributionCatalog.arg(p)))"
     }
     return "\(DistributionCatalog.mcElreathName(dist))(\(DistributionCatalog.args(dist)))"
+  }
+
+  // MARK: - T4: Cholesky varying-vector decomposition
+
+  /// Emit `name[indexedBy] ~ dmvnorm2(c(meanNames), sigma, L)` by
+  /// decomposing the stored expression strings:
+  ///   meanStr  = `"[a_bar, b_bar]'"` → names `["a_bar", "b_bar"]`
+  ///   cholStr  = `"diag_pre_multiply(sigma_ab, L_Omega)"` → (sigma, L)
+  ///
+  /// Returns nil when either string doesn't match the expected format
+  /// (caller falls back to generic rendering; oracle unaffected).
+  private static func renderVaryingVectorCholDist(
+    name: String,
+    indexedBy: String,
+    meanStr: String,
+    cholStr: String
+  ) -> String? {
+    // meanStr: "[a_bar, b_bar]'" — strip "[" prefix and "]'" suffix.
+    guard meanStr.hasPrefix("["), meanStr.hasSuffix("]'") else { return nil }
+    let meanInner = String(meanStr.dropFirst().dropLast(2))
+    let names = meanInner.split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+    guard !names.isEmpty else { return nil }
+
+    // cholStr: "diag_pre_multiply(sigma, L)" — strip prefix and ")" suffix.
+    let dpPrefix = "diag_pre_multiply("
+    guard cholStr.hasPrefix(dpPrefix), cholStr.hasSuffix(")") else { return nil }
+    let dpInner = String(cholStr.dropFirst(dpPrefix.count).dropLast())
+    let dpParts = dpInner.split(separator: ",", maxSplits: 1)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+    guard dpParts.count == 2 else { return nil }
+    let sigma = dpParts[0]
+    let L = dpParts[1]
+
+    return "\(name)[\(indexedBy)] ~ dmvnorm2(c(\(names.joined(separator: ", "))), \(sigma), \(L))"
   }
 }

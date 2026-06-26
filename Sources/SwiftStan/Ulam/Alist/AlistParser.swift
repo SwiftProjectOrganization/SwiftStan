@@ -18,6 +18,12 @@
 //  `ExpressionParser` by extracting the source span between tokens
 //  and re-parsing.
 //
+//  T2 (Docs/AlistTransposePlan.md): `parseBracketVectorArg` recognises
+//  `[ id1, id2, … ]'` in a distribution-arg position and converts it to
+//  the same `"[id1, id2, …]'"` string that `parseCRowVectorArg` produces
+//  for `c(id1, id2, …)`. Both forms then lower identically through
+//  `AlistLowering.lowerGroupIndexed` / `lowerPackedIndexed`.
+//
 
 import Foundation
 
@@ -297,13 +303,40 @@ internal enum AlistParser {
     let argGroups = splitOnTopLevelCommas(inner)
     var args: [ExpressionNode] = []
     for group in argGroups {
-      if let row = parseCRowVectorArg(group) {
+      // T2: `[ id1, id2, … ]'` — bracket-vector arg (postfix transpose).
+      // Recognised before parseCRowVectorArg so that hand-written alists
+      // using Stan-style row-vector notation work alongside the c(...) form.
+      if let row = parseBracketVectorArg(group) {
+        args.append(.identifier(row))
+      } else if let row = parseCRowVectorArg(group) {
         args.append(.identifier(row))
       } else {
         args.append(try parseExpression(tokens: group, in: source))
       }
     }
     return AlistDistribution(name: name, args: args)
+  }
+
+  /// T2: Recognise `[id1, id2, …] '` distribution-arg shape. Returns the
+  /// Stan-side row-vector literal `[id1, id2, …]'`. Mirrors
+  /// `parseCRowVectorArg` but accepts the bracket-vector form directly,
+  /// so hand-written `[a, b]'` is equivalent to `c(a, b)` in a dist arg.
+  private static func parseBracketVectorArg(_ tokens: [AlistToken]) -> String? {
+    // Minimum shape: `[` id `]` `'` — 4 tokens.
+    guard tokens.count >= 4,
+          tokens[0].kind == .leftBracket,
+          tokens[tokens.count - 1].kind == .prime,
+          tokens[tokens.count - 2].kind == .rightBracket else { return nil }
+    // Inner tokens: the content between `[` and `]`.
+    let inner = Array(tokens[1..<(tokens.count - 2)])
+    let groups = splitOnTopLevelCommas(inner)
+    var names: [String] = []
+    for g in groups {
+      guard g.count == 1, g[0].kind == .identifier else { return nil }
+      names.append(g[0].lexeme)
+    }
+    guard names.count >= 2 else { return nil }
+    return "[\(names.joined(separator: ", "))]'"
   }
 
   /// Recognise `c(id1, id2, …)` distribution-arg shape. Returns the

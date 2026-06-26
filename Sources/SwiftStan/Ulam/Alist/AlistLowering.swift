@@ -16,6 +16,14 @@
 //  Output is neutral about likelihood-vs-prior — Slice C decides that
 //  based on McElreath's "first ~ is the likelihood" convention.
 //
+//  T3 (Docs/AlistTransposePlan.md): the `.indexed` LHS case now detects
+//  `dmvnorm2` / `dmvnormchol` and routes them through `lowerPackedIndexed`
+//  instead of the plain `varyingSample` path. This handles alist text
+//  emitted by `AlistTextEmitter` (T4) for `.varyingVectorPrior` statements:
+//    `ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega)`
+//  The length is derived from the `c(…)` mean-arg count so the packed
+//  name carries all the information needed by `AlistClassify`.
+//
 
 import Foundation
 
@@ -94,11 +102,22 @@ internal enum AlistLowering {
           let lowered = try lowerDistribution(dist)
           out.append(.scalarSample(name: name, dist: lowered, truncation: trunc))
         case .indexed(let name, let col):
-          let lowered = try lowerDistribution(dist)
-          out.append(.varyingSample(name: name,
-                                    indexedBy: col,
-                                    dist: lowered,
-                                    truncation: trunc))
+          // T3: packed-name form emitted by AlistTextEmitter (T4) —
+          // `ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega)`.
+          // Route multivariate distributions through lowerPackedIndexed
+          // so the classify pass receives a varyingVectorSample.
+          if dist.name == "dmvnorm2" || dist.name == "dmvnormchol" {
+            out.append(try lowerPackedIndexed(name: name,
+                                              indexColumn: col,
+                                              dist: dist,
+                                              truncation: trunc))
+          } else {
+            let lowered = try lowerDistribution(dist)
+            out.append(.varyingSample(name: name,
+                                      indexedBy: col,
+                                      dist: lowered,
+                                      truncation: trunc))
+          }
         case .group(let names):
           let lowered = try lowerDistribution(dist)
           for n in names {
@@ -245,6 +264,62 @@ internal enum AlistLowering {
       truncation: truncation)
   }
 
+  /// T3: `ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega)` —
+  /// packed varying-vector prior emitted by `AlistTextEmitter` (T4) for
+  /// the reverse-pipeline path. The LHS carries only the packed name; the
+  /// inner vector length is derived from the `c(…)` mean-arg count.
+  ///
+  /// Produces the same `varyingVectorSample` that `lowerGroupIndexed` would
+  /// build, so `AlistClassify` and `AlistToUlamModel` see the same shape.
+  /// `componentNames` is `[]` because the original component names are not
+  /// recoverable from the packed form — `AlistEmitter` (DSL text) would use
+  /// the packed name verbatim; the `stancode` path is unaffected.
+  private static func lowerPackedIndexed(name: String,
+                                         indexColumn: String,
+                                         dist: AlistDistribution,
+                                         truncation: Truncation) throws
+                                         -> LoweredAlistStatement {
+    guard dist.name == "dmvnormchol" || dist.name == "dmvnorm2" else {
+      throw AlistLoweringError.unsupportedDistribution(name: dist.name)
+    }
+    try requireArity(dist, expected: 3, got: dist.args.count)
+    let mean = try lowerArg(dist.args[0], in: dist.name)
+    // Derive vector length from the mean arg.
+    // parseCRowVectorArg / parseBracketVectorArg produce
+    // .identifier("[a, b]'") — count the names inside.
+    let length: Int
+    if case .identifier(let meanStr) = dist.args[0],
+       meanStr.hasPrefix("["), meanStr.hasSuffix("]'") {
+      let inner = meanStr.dropFirst().dropLast(2)   // strip "[" and "]'"
+      length = inner.split(separator: ",").count
+    } else {
+      length = 1   // safe fallback; single-component is unusual
+    }
+    let sigmaIndex: Int
+    let corrIndex: Int
+    switch dist.name {
+    case "dmvnormchol": (corrIndex, sigmaIndex) = (1, 2)
+    case "dmvnorm2":    (sigmaIndex, corrIndex) = (1, 2)
+    default:
+      throw AlistLoweringError.unsupportedDistribution(name: dist.name)
+    }
+    guard case .identifier(let sigma) = dist.args[sigmaIndex] else {
+      throw AlistLoweringError.unsupportedDistributionArg(dist.args[sigmaIndex], in: dist.name)
+    }
+    guard case .identifier(let corr) = dist.args[corrIndex] else {
+      throw AlistLoweringError.unsupportedDistributionArg(dist.args[corrIndex], in: dist.name)
+    }
+    let chol = DistributionArg.symbol("diag_pre_multiply(\(sigma), \(corr))")
+    return .varyingVectorSample(
+      name: name,
+      indexedBy: indexColumn,
+      length: length,
+      componentNames: [],   // not recoverable from packed name form
+      sigmaName: sigma,
+      dist: .multivariateNormalCholesky(mean: mean, chol: chol),
+      truncation: truncation)
+  }
+
   private static func requireArity(_ dist: AlistDistribution,
                                    expected: Int,
                                    got: Int) throws {
@@ -275,4 +350,3 @@ internal enum AlistLowering {
     }
   }
 }
-

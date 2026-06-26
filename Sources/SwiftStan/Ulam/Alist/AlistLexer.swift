@@ -6,6 +6,12 @@
 //  `Generator/ExpressionLexer.swift` but adds the statement-level
 //  tokens (`~`, `<-`, `,`) and handles R `#` comments.
 //
+//  T1 (Docs/AlistTransposePlan.md): `'` (apostrophe / transpose) is now
+//  recognised as a `.prime` token rather than throwing
+//  `unexpectedCharacter`. The token is consumed by `parseBracketVectorArg`
+//  in `AlistParser` when it appears immediately after a `]` in a
+//  distribution-arg position.
+//
 
 import Foundation
 
@@ -20,6 +26,7 @@ internal struct AlistToken: Equatable {
     case assign      // `<-`
     case comma
     case equals      // `=` — only used for `data=d` style outer-call args, which we skip
+    case prime       // `'` — postfix transpose (T1)
     case eof
   }
 
@@ -122,6 +129,7 @@ internal enum AlistLexer {
       case "~": single = .tilde
       case ",": single = .comma
       case "=": single = .equals
+      case "'": single = .prime   // T1: postfix transpose
       default:  single = nil
       }
       if let kind = single {

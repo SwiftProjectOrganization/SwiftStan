@@ -335,6 +335,83 @@ struct Stan2AlistTests {
     #expect(text.contains("a ~ dnorm(0, 1.5)"))
   }
 
+  // MARK: - T1: AlistLexer prime token (Docs/AlistTransposePlan.md)
+
+  @Test("AlistLexer does not crash on `'` (postfix transpose) character")
+  func primeLexerNoCrash() throws {
+    // `'` must produce a `.prime` token rather than throwing.
+    let tokens = try AlistLexer.tokenize("alist( a ~ dnorm([mu, 0]', sigma) )")
+    #expect(tokens.contains { $0.kind == .prime })
+  }
+
+  // MARK: - T2: parseBracketVectorArg (Docs/AlistTransposePlan.md)
+
+  @Test("[a, b]' as a distribution arg is equivalent to c(a, b)")
+  func bracketVectorArgEquivalentToCVector() throws {
+    // Both forms should parse to the same AlistDistribution args.
+    let bracketForm = "alist( x ~ dnorm(0, 1), ab[g] ~ dmvnorm2([a, b]', sigma, L) )"
+    let cForm       = "alist( x ~ dnorm(0, 1), ab[g] ~ dmvnorm2(c(a, b), sigma, L) )"
+    let bracketStmts = try AlistParser.parse(bracketForm)
+    let cStmts       = try AlistParser.parse(cForm)
+    guard bracketStmts.count == 2, cStmts.count == 2 else {
+      Issue.record("expected 2 statements in each"); return
+    }
+    guard case let .sample(_, bracketDist, _) = bracketStmts[1],
+          case let .sample(_, cDist, _) = cStmts[1] else {
+      Issue.record("expected sample statements"); return
+    }
+    // Mean arg (args[0]) must be .identifier("[a, b]'") in both forms.
+    #expect(bracketDist.args == cDist.args)
+  }
+
+  // MARK: - T3: lowerPackedIndexed (Docs/AlistTransposePlan.md)
+
+  @Test("indexed LHS + dmvnorm2 lowers to varyingVectorSample (T3)")
+  func indexedLhsDmvnorm2LowersToVaryingVector() throws {
+    let alist = """
+    alist(
+      wait ~ dnorm(mu, sigma),
+      ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega)
+    )
+    """
+    let parsed = try AlistParser.parse(alist)
+    let lowered = try AlistLowering.lower(parsed)
+    guard lowered.count == 2,
+          case let .varyingVectorSample(name, indexedBy, length, _, sigmaName, dist, _)
+            = lowered[1] else {
+      Issue.record("expected varyingVectorSample at index 1, got \(lowered)"); return
+    }
+    #expect(name == "ab")
+    #expect(indexedBy == "cafe")
+    #expect(length == 2)
+    #expect(sigmaName == "sigma_ab")
+    guard case .multivariateNormalCholesky = dist else {
+      Issue.record("expected multivariateNormalCholesky distribution"); return
+    }
+  }
+
+  // MARK: - T4: AlistTextEmitter dmvnorm2 rendering (Docs/AlistTransposePlan.md)
+
+  @Test("varyingVectorPrior+multivariateNormalCholesky emits dmvnorm2(c(...)) without `'`")
+  func varyingVectorPriorEmitsDmvnorm2() throws {
+    let statements: [Statement] = [
+      .likelihood(lhs: "wait", distribution: .normal("mu", "sigma"),
+                  truncation: .none, useLpdf: false),
+      .varyingVectorPrior(name: "ab", indexedBy: "cafe", length: "J",
+                          countSymbol: nil,
+                          distribution: .multivariateNormalCholesky(
+                            mean: .expression("[a_bar, b_bar]'"),
+                            chol: .expression("diag_pre_multiply(sigma_ab, L_Omega)")),
+                          truncation: .none,
+                          useLpdf: false),
+    ]
+    let text = try AlistTextEmitter.emit(statements)
+    #expect(text.contains("ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega)"),
+            "emitter must use dmvnorm2(c(...), ...) form, got:\n\(text)")
+    #expect(!text.contains("'"),
+            "emitter output must not contain the transpose `'` character:\n\(text)")
+  }
+
   // MARK: - Slice E: stan2alist command
 
   @Suite("stan2alist command tests")
@@ -500,8 +577,8 @@ struct Stan2AlistTests {
     /// Family A oracle: `StanBlockParser` + `StanToUlamModel` reconstruct the
     /// exact `[Statement]` list from the cafe varying-slopes golden, and
     /// `stancode` re-emits the same Stan byte-for-byte.
-    /// Alist text is not tested here — it uses `'` (transpose) which the
-    /// AlistLexer doesn't support; the Stan-level oracle is the hard gate.
+    /// The full alist-text round-trip for Family A is covered by
+    /// `cafeAlistFullRoundTrip` below (T5, Docs/AlistTransposePlan.md).
     @Test("Family A (cafe varying-slopes) Stan → parse → stancode is byte-identical")
     func cafeMultivariateRoundTrip() throws {
       let original = """
@@ -588,6 +665,57 @@ struct Stan2AlistTests {
       let roundtrip = try stancode(rebuilt)
       #expect(roundtrip == original,
               "SUR round-trip diverged:\n--- original ---\n\(original)\n--- roundtrip ---\n\(roundtrip)")
+    }
+
+    // MARK: - T5: full alist-text round-trip oracle (Docs/AlistTransposePlan.md)
+
+    /// `alist → stancode → stan2alist → alist → stancode` byte-identical
+    /// for a cafe-style varying-slopes model. Exercises T4 (emitter uses
+    /// `dmvnorm2(c(...), sigma, L)` form without `'`), T3 (indexed-LHS
+    /// multivariate lowering), and AlistLexer T1 (prime token accepted).
+    ///
+    /// Uses the packed `ab[cafe]` form in both the linear model and the
+    /// prior — component name recovery is a documented loss (§6 of plan).
+    @Test("cafe-style alist → stancode → stan2alist → stancode round-trips byte-identically")
+    func cafeAlistFullRoundTrip() throws {
+      let model = "stan2alist_cafe_alist_roundtrip"
+      let paths = casePaths(for: model)
+      try ensureCaseDirectories(paths)
+      defer { try? FileManager.default.removeItem(at: caseRoot().appendingPathComponent(model)) }
+
+      let cafeAlist = """
+      alist(
+        wait ~ dnorm( mu , sigma ),
+        mu <- ab[cafe][1] + ab[cafe][2]*afternoon,
+        ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega),
+        a_bar ~ dnorm(0, 5),
+        b_bar ~ dnorm(0, 5),
+        sigma ~ dexp(1),
+        sigma_ab ~ dexp(1),
+        L_Omega ~ dlkjcorr(2)
+      )
+      """
+      try cafeAlist.write(
+        to: paths.preliminaries.appendingPathComponent("\(model).alist.R"),
+        atomically: true, encoding: .utf8)
+
+      // Forward: alist → original Stan.
+      let original = try String(contentsOf: stancode(model: model), encoding: .utf8)
+
+      // Reverse: Stan → emitted alist.
+      _ = try stan2alist(model: model, force: true)
+
+      // Verify the emitted alist contains no `'` (T4 emitter fix).
+      let emittedAlist = try String(
+        contentsOf: paths.preliminaries.appendingPathComponent("\(model).alist.R"),
+        encoding: .utf8)
+      #expect(!emittedAlist.contains("'"),
+              "emitted alist must not contain `'`:\n\(emittedAlist)")
+
+      // Forward again: emitted alist → Stan (must equal the original).
+      let roundtrip = try String(contentsOf: stancode(model: model), encoding: .utf8)
+      #expect(roundtrip == original,
+              "alist-text round-trip diverged:\n--- original ---\n\(original)\n--- roundtrip ---\n\(roundtrip)")
     }
   }
 }

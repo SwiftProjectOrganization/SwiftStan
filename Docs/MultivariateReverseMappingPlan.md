@@ -107,9 +107,10 @@ Also reverse `lkjCorrCholeskyPriorMatchesGolden` (`:1045`) and
 | Role inference (M3) | `Stan2Alist/StanToUlamModel.swift` | All parameter kinds classified; priors rebuilt in declaration order. `to_vector(<m>)` LHS handled. Plain vector priors (size not an index `upper`) emit `.vectorPrior`. |
 | SUR loop recognition (M4) | `Stan2Alist/StanBlockParser.swift` (`appendRewrittenSurLoop`) | Two-statement body lowered to `.assignment` + `.sampling`. |
 | alist text (M5) | `Stan2Alist/AlistTextEmitter.swift` | `vectorPrior`, `lkjCorrCholeskyPrior`, `wishartPrior`, `varyingVectorPrior`, `matrixPrior`, `covMatrixPrior` all render. |
-| Tests + oracle (M6) | `Tests/SwiftStanTests/Stan2AlistTests.swift` | Catalog symmetry extended to multivariate; `cafeMultivariateRoundTrip` and `surMultivariateRoundTrip` oracle tests pass byte-identically via `Stan → [Statement] → stancode`. |
+| Tests + oracle (M6) | `Tests/SwiftStanTests/Stan2AlistTests.swift` | Catalog symmetry extended to multivariate; `cafeMultivariateRoundTrip` and `surMultivariateRoundTrip` oracle tests pass byte-identically via `Stan → [Statement] → stancode`. All 22 tests pass. |
+| `generated quantities` bonus | `StanBlockParser` + `StanToUlamModel` + `AlistTextEmitter` | `generated quantities` block is now **parsed** (into `StanProgram.gqStatements`) instead of dropped; `reconstructGQ` maps `<dist>_rng(<args>)` assignments back to `Statement.generatedQuantity`; emitter renders them as `<name> <- sim(d*(<args>))`. |
 
-**Known limitation:** the full alist-text round-trip (`alist → stancode → stan2alist → stancode`) for multivariate models is blocked by `AlistLexer` not recognising the `'` transpose operator that appears in `[a_bar, b_bar]'` emitted by `AlistTextEmitter.renderStatement`. The oracle uses the `Stan → [Statement] → stancode` path directly, bypassing alist text. Deferred: AlistLexer `'` support; `c(...)` prior regrouping in Family A alist text.
+**Deferred (not blocking the oracle):** the full alist-text round-trip (`alist → stancode → stan2alist → stancode`) for Family A multivariate models is blocked by `AlistLexer` not recognising the `'` transpose operator in `[a_bar, b_bar]'`. The hard gate (§1) uses `Stan → [Statement] → stancode` directly and is unaffected. Deferred: AlistLexer `'` support; `c(...)` prior regrouping in Family A alist text.
 
 ## 4. Slices (independently testable)
 

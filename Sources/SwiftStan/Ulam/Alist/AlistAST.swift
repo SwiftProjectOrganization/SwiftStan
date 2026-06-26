@@ -23,6 +23,10 @@ internal indirect enum AlistStatement: Equatable {
   case link(function: AlistLink,
             target: String,
             rhs: ExpressionNode)
+  /// `<target> <- sim(<dist>(args))` — McElreath-style posterior-predictive
+  /// draw. Lowered to `Statement.generatedQuantity` and emitted into the
+  /// Stan `generated quantities` block as `<type>[N] <target> = <dist>_rng(args);`.
+  case generatedQuantity(target: String, dist: AlistDistribution)
 }
 
 /// LHS of a `~` statement. Four shapes show up in McElreath's alists:

@@ -18,18 +18,20 @@ This project is work in progress!!! Work completed or still to be done can be fo
 | ------------ | ------------------------------------------ |
 | Command      | Effect                                     |
 | ------------ | ------------------------------------------ |
-| compile      | Compile a Stan model                       |
-| sample       | Sample from a compiled model               |
-| stansummary  | Stansummary on a sampled model             |
-| optimize     | Optimize a compiled model                  |
-| pathfinder   | Pathfinder on a compiled model             |
-| laplace      | Laplace on a compiled model                |
-| runinfo      | See note 1                                 |
-| ------------ | ------------------------------------------ |
+| compile              | Compile a Stan model                                      |
+| sample               | Sample from a compiled model                              |
+| stansummary          | Stansummary on a sampled model                            |
+| optimize             | Optimize a compiled model                                 |
+| pathfinder           | Pathfinder on a compiled model                            |
+| laplace              | Laplace on a compiled model                               |
+| generatedquantities  | Run generate_quantities on existing draws (see note 2)    |
+| runinfo              | See note 1                                                |
+| -------------------- | --------------------------------------------------------- |
 ```
 **Notes**
 
 1. The `runinfo` command reads `Results/<name>.config.json` (written by `sample`, which renames cmdstan's `<name>_output_config.json`) and cleans it in place — stripping absolute paths to basenames and sorting keys. It is also used internally by `stansummary` to determine the number of chains created by `sample`.
+2. The `generatedquantities` command runs cmdstan's standalone `generate_quantities` method over the draws from a prior `sample` run and writes `Results/<name>.generated_quantities.csv`. The `.stan` file must contain a `generated quantities` block — add a `sim()` line to the alist before running `stancode` (see UlamManual.md §2.3.1), or hand-edit the `.stan` directly.
 
  
 ### Ulam pipeline related commands
@@ -38,17 +40,18 @@ This project is work in progress!!! Work completed or still to be done can be fo
 | ------------ | -------------------------------------- |
 | Command      | Effect                                 |
 | ------------ | -------------------------------------- |
-| ulam         | Run the ulam pipeline end-to-end       |
-| stancode     | alist -> .stan                         |
-| stan2alist   | .stan -> alist (inverse of stancode)   |
-| alist2dsl    | alist -> smoke driver                  |
-| dsl2stan     | smoke driver -> .stan (swiftc)         |
+| ulam         | Run the ulam pipeline end-to-end                       |
+| stancode     | alist -> .stan (sim() lines emit generated quantities) |
+| stan2alist   | .stan -> alist (inverse of stancode)                   |
+| alist2dsl    | alist -> smoke driver                                  |
+| dsl2stan     | smoke driver -> .stan (swiftc)                         |
 | ------------ | -------------------------------------- |
 ```
 **Notes**
 
 1. By default `ulam` prefers the fast in-process `stancode` path when an "<name>.alist.R" is present.                          
 2. Command `ulam` falls back to `dsl2stan` against a hand-authored "smoke driver". See DSLManual.md.
+3. A `sim()` line in an alist (`y_rep <- sim(dnorm(mu, sigma))`) causes `stancode` to emit a `generated quantities` block. Run `generatedquantities` after `sample` to produce posterior-predictive draws. See UlamManual.md §2.3.1.
 
 
 ### Shared between both pipelines

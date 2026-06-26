@@ -50,6 +50,10 @@ internal struct ClassifiedAlist: Equatable {
       /// expression so emitter passes can reuse the same canonicalised
       /// source path as `.link`.
       case deterministic
+      /// `<name> <- sim(<dist>)` — posterior-predictive draw emitted into
+      /// the Stan `generated quantities` block. The output symbol is neither
+      /// data nor parameter; it must not appear in `dataColumns`.
+      case generatedQuantity
     }
     internal let kind: Kind
     internal let name: String          // outcome / param / link target
@@ -149,6 +153,7 @@ internal enum AlistClassify {
     var varyingVectorParams: [String] = []
     var indexColumns: [String] = []
     var statements: [ClassifiedAlist.Statement] = []
+    var generatedQuantityNames: [String] = []
     var seenScalar = false
 
     for stmt in lowered {
@@ -220,6 +225,13 @@ internal enum AlistClassify {
                                 dist: nil,
                                 truncation: .none,
                                 linkRhs: rewritePackedComponents(rhs, using: componentSlots)))
+      case .generatedQuantity(let name, let dist):
+        generatedQuantityNames.append(name)
+        statements.append(.init(kind: .generatedQuantity,
+                                name: name,
+                                dist: dist,
+                                truncation: .none,
+                                linkRhs: nil))
       }
     }
 
@@ -238,6 +250,9 @@ internal enum AlistClassify {
     known.formUnion(indexColumns)
     // The synthesised cardinality symbols (e.g. "J") aren't user data.
     known.formUnion(lengthBindings.keys)
+    // Generated-quantity outputs are neither data nor parameters — exclude
+    // them so they don't appear in `dataColumns` and end up as CSV inputs.
+    known.formUnion(generatedQuantityNames)
     var referenced: Set<String> = []
     for stmt in statements {
       if let dist = stmt.dist {

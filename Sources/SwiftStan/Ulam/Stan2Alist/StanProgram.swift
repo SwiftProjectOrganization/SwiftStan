@@ -81,10 +81,14 @@ struct StanProgram: Equatable {
   var dataDecls: [StanDecl]
   var parameterDecls: [StanDecl]
   var modelStatements: [StanModelStatement]
+  /// Assignment statements from the `generated quantities` block, if any.
+  /// Each entry is `.assignment(lhs: "<type>[N] <name>", rhs: "<dist>_rng(<args>)")`.
+  /// `StanToUlamModel` maps these to `Statement.generatedQuantity`; `AlistTextEmitter`
+  /// renders them as `<name> <- sim(d*(<args>))`.
+  var gqStatements: [StanModelStatement]
   /// Names of blocks that were recognised but intentionally not
-  /// translated (`generated quantities`, `transformed parameters`,
-  /// `transformed data`, `functions`). Slice C surfaces these as
-  /// loud warnings.
+  /// translated (`transformed parameters`, `transformed data`, `functions`).
+  /// Slice C surfaces these as loud warnings.
   var droppedBlocks: [String]
 }
 

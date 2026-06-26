@@ -154,10 +154,82 @@ enum StanToUlamModel {
       throw StanToUlamError.multipleLikelihoods(likelihoods.map(likelihoodName))
     }
 
+    // Reconstruct generated-quantities statements from the GQ block.
+    var generatedQuantities: [Statement] = []
+    for stmt in program.gqStatements {
+      guard case let .assignment(lhs, rhs) = stmt else { continue }
+      guard let (name, dist) = reconstructGQ(lhs: lhs, rhs: rhs) else {
+        warnings.append("skipped unrecognised generated quantities statement: \(lhs) = \(rhs)")
+        continue
+      }
+      generatedQuantities.append(.generatedQuantity(name: name, distribution: dist))
+    }
+
     // McElreath order: likelihood first (so re-classification picks the
-    // outcome), then the linear model, then the priors.
-    let statements = likelihoods + links + priors
+    // outcome), then the linear model, then the priors, then GQ draws last.
+    let statements = likelihoods + links + priors + generatedQuantities
     return Result(statements: statements, warnings: warnings)
+  }
+
+  /// Parse a GQ assignment `<type>[N] <name> = <dist>_rng(<args>)` into
+  /// a `(name, Distribution)` pair. Returns nil for any shape we don't
+  /// recognise (caller emits a warning and skips).
+  private static func reconstructGQ(lhs: String,
+                                    rhs: String) -> (name: String, dist: Distribution)? {
+    // Extract the variable name — last identifier token in the LHS type spec.
+    guard let name = lastIdentifier(in: lhs), !name.isEmpty else { return nil }
+    // RHS must be `<dist>_rng(<args>)`.
+    let trimmedRhs = rhs.trimmingCharacters(in: .whitespaces)
+    guard let rngRange = trimmedRhs.range(of: "_rng("),
+          let closeParen = trimmedRhs.lastIndex(of: ")"),
+          closeParen == trimmedRhs.index(before: trimmedRhs.endIndex) else {
+      return nil
+    }
+    let distName = String(trimmedRhs[..<rngRange.lowerBound])
+    let argsStr  = String(trimmedRhs[rngRange.upperBound..<closeParen])
+    let args     = splitTopLevelCommas(argsStr)
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+    guard let dist = try? DistributionCatalog.distribution(fromStanName: distName, args: args) else {
+      return nil
+    }
+    return (name, dist)
+  }
+
+  private static func lastIdentifier(in s: String) -> String? {
+    let chars = Array(s.trimmingCharacters(in: .whitespaces))
+    guard !chars.isEmpty else { return nil }
+    var end = chars.count
+    while end > 0, !isIdentChar(chars[end - 1]) { end -= 1 }
+    var start = end
+    while start > 0, isIdentChar(chars[start - 1]) { start -= 1 }
+    guard start < end else { return nil }
+    return String(chars[start..<end])
+  }
+
+  private static func isIdentChar(_ c: Character) -> Bool {
+    c.isLetter || c.isNumber || c == "_"
+  }
+
+  private static func splitTopLevelCommas(_ s: String) -> [String] {
+    var parts: [String] = []
+    var current = ""
+    var depth = 0
+    for c in s {
+      switch c {
+      case "(", "[": depth += 1; current.append(c)
+      case ")", "]": depth -= 1; current.append(c)
+      case "," where depth == 0:
+        parts.append(current)
+        current = ""
+      default:
+        current.append(c)
+      }
+    }
+    if !current.trimmingCharacters(in: .whitespaces).isEmpty || !parts.isEmpty {
+      parts.append(current)
+    }
+    return parts
   }
 
   // MARK: - Helpers

@@ -163,8 +163,20 @@ internal enum AlistParser {
     // McElreath's alists use form (2) for any `<name> <- <expr>` line
     // that isn't behind logit/log/cloglog. Indexed bare LHS
     // (`mu[i] <- …`) isn't accepted yet — tracked in TODO §2.
+    //
+    // Form (3): `<ident> <- sim(<dist>(args))` — posterior-predictive draw.
+    // `sim(...)` is a McElreath-style marker that wraps the inner
+    // distribution; the whole RHS is exactly `sim ( <dist-tokens> )`.
     if lhs.count == 1, lhs[0].kind == .identifier {
       let target = lhs[0].lexeme
+      if rhs.count >= 4,
+         rhs[0].kind == .identifier, rhs[0].lexeme == "sim",
+         rhs[1].kind == .leftParen,
+         rhs.last?.kind == .rightParen {
+        let inner = Array(rhs[2..<(rhs.count - 1)])
+        let dist = try parseDistribution(inner, in: source)
+        return .generatedQuantity(target: target, dist: dist)
+      }
       let rhsNode = try parseExpression(tokens: rhs, in: source)
       return .link(function: .identity, target: target, rhs: rhsNode)
     }

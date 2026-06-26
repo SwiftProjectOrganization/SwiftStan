@@ -562,6 +562,42 @@ public struct Inits: ModelStatement {
   }
 }
 
+/// Posterior-predictive draw in the `generated quantities` block.
+/// Mirrors `Likelihood` in form but emits
+/// `<type>[N] <name> = <dist>_rng(args);` rather than a sampling statement.
+/// Continuous distributions produce `vector[N]`; discrete ones produce
+/// `array[N] int`. The distribution must reference only parameters and
+/// observed data — not model-block locals (Link/Deterministic LHSes):
+///
+/// ```swift
+/// Likelihood("log_radon", .normal("alpha + beta*floor", "sigma"))
+/// Prior("alpha", .normal(0, 10))
+/// Prior("beta", .normal(0, 10))
+/// Prior("sigma", .normal(0, 1), truncation: Truncation(lower: 0))
+/// Sim("y_rep", .normal("alpha + beta*floor", "sigma"))
+/// ```
+///
+/// Emits:
+///
+/// ```stan
+/// generated quantities {
+///   vector[N] y_rep = normal_rng(alpha + beta*floor, sigma);
+/// }
+/// ```
+public struct Sim: ModelStatement {
+  public let name: String
+  public let distribution: Distribution
+
+  public init(_ name: String, _ distribution: Distribution) {
+    self.name = name
+    self.distribution = distribution
+  }
+
+  public var statement: Statement {
+    .generatedQuantity(name: name, distribution: distribution)
+  }
+}
+
 public struct Link: ModelStatement {
   public let function: LinkFunction
   public let lhs: String

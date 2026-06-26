@@ -121,6 +121,9 @@ internal enum AlistToUlamModel {
         let source = AlistEmitter.canonicalExpression(stmt.linkRhs!)
         out.append(.deterministic(lhs: stmt.name,
                                   rhs: Expression(source)))
+      case .generatedQuantity:
+        out.append(.generatedQuantity(name: stmt.name,
+                                      distribution: stmt.dist!))
       }
     }
     return out

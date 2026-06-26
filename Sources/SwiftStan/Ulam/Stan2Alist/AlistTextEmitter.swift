@@ -64,6 +64,8 @@ enum AlistTextEmitter {
       return "\(fn)(\(lhs)) <- \(rhs.source)"
     case let .deterministic(lhs, rhs):
       return "\(lhs) <- \(rhs.source)"
+    case let .generatedQuantity(name, dist):
+      return "\(name) <- sim(\(renderDistribution(dist)))"
     default:
       throw AlistTextEmitError.unsupportedStatement(String(describing: statement))
     }

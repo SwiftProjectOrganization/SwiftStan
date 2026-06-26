@@ -44,6 +44,10 @@ internal enum LoweredAlistStatement: Equatable {
   /// — see `AlistToUlamModel.build(_:)`. Routed here from
   /// `AlistLink.identity` in `lower(_:)`.
   case deterministic(target: String, rhs: ExpressionNode)
+  /// `<target> <- sim(<dist>(args))` — posterior-predictive draw.
+  /// Lowered from `AlistStatement.generatedQuantity`; the inner
+  /// distribution is the same `Distribution` produced by `lowerDistribution`.
+  case generatedQuantity(name: String, dist: Distribution)
 }
 
 internal enum AlistLoweringError: Error, CustomStringConvertible {
@@ -71,6 +75,9 @@ internal enum AlistLowering {
     var out: [LoweredAlistStatement] = []
     for stmt in statements {
       switch stmt {
+      case .generatedQuantity(let target, let dist):
+        let lowered = try lowerDistribution(dist)
+        out.append(.generatedQuantity(name: target, dist: lowered))
       case .link(.identity, let target, let rhs):
         // Bare `<target> <- <rhs>` — produce a deterministic
         // assignment, not a real link. Downstream

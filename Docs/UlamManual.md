@@ -21,8 +21,15 @@ alist2dsl → dsl2stan (swiftc based) → compile → sample
 ```
 The DSL/swiftc workflow is described in the DSLManula.md.
 
+3. **Posterior-predictive workflow**:
+```
+stancode (with sim() line)  →  compile  →  sample  →  generatedquantities
+```
+Adding a `sim()` line to an alist (§2.3.1) causes `stancode` to emit a
+`generated quantities` block. After sampling, `generatedquantities` re-runs the
+compiled binary over the existing draws and writes `<name>.generated_quantities.csv`.
 
-3. **Reverse workflow**:
+4. **Reverse workflow**:
 ```
 stan2alist
 ```
@@ -61,11 +68,13 @@ The cmdstan pipeline needs a `Results/<name>.stan` and a `Results/<name>.data.js
 | `swiftstan optimize --model <name>` | `Results/<name>` (binary) | `Results/<name>/optimize.csv`+ logs |
 | `swiftstan pathfinder --model <name>` | `Results/<name>` (binary) | `Results/<name>/pathfinder.csv`+ logs |
 | `swiftstan runinfo --model <name>` | `Results/<name>.config.json` |  No output|
+| `swiftstan generatedquantities --model <name>` | `Results/<name>` (binary) + sample CSVs | `Results/<name>.generated_quantities.csv` + logs |
 |---|---|---|
 
 `compile` shells out to cmdstan's `make` to translate the Stan source to C++ and build a native binary. It is part of the cmdstan pipeline. 
 `sample` needs, in addition to a compiled .stan file, and if needed by the model, a `<name>.data.json` file.
 `runinfo` reads the Results/<name>.config.json files. Currently only used in `stansummary` to find the number of chains.
+`generatedquantities` runs cmdstan's standalone `generate_quantities` method over the existing sample draws. The `.stan` file must contain a `generated quantities` block — add a `sim()` line to the alist (§2.3.1) before running `stancode`, or hand-edit the `.stan` directly.
 
 ### 2.3. Ulam forward pipeline.
 
@@ -89,6 +98,52 @@ Ulam command `stancode` runs entirely in-process (no `swiftc`, no cmdstan).
 Ulam command `csv2json` creates the data input file needed for running the Stan Language Program.
 Ulam command `alist2dsl` creates a "smoke driver" Swift program and is described in the DSLManual.
 Ulam command `dsl2stan` runs a "smoke driver" (Swift) program and is described in the DSLManual.
+
+#### 2.3.1 Posterior-predictive draws with `sim()`
+
+To emit a `generated quantities` block from an alist, add one `sim()` line after the priors:
+
+```r
+alist(
+  log_radon ~ dnorm(alpha + beta * floor, sigma),
+  alpha ~ dnorm(0, 10),
+  beta ~ dnorm(0, 10),
+  sigma ~ dnorm(0, 10),
+  y_rep <- sim(dnorm(alpha + beta * floor, sigma))
+)
+```
+
+The `sim(dnorm(...))` wrapper is McElreath-style notation for a posterior-predictive draw. `stancode` maps it to:
+
+```stan
+generated quantities {
+  vector[N] y_rep = normal_rng(alpha + beta*floor, sigma);
+}
+```
+
+**How it works:**
+
+- `sim()` wraps an ordinary `d*` distribution expression (same form as the likelihood or a prior). The inner distribution uses the catalog's RNG name: `dnorm` → `normal_rng`, `dbinom(1, p)` → `bernoulli_rng`, `dpois` → `poisson_rng`, etc.
+- Continuous distributions produce `vector[N] <name> = ...;`; discrete distributions produce `array[N] int <name> = ...;`.
+- The RHS may reference only **parameters and observed data** — not model-block locals. A model-block local is the LHS of a `<-` assignment (e.g. `logit(p) <- a + b*x` makes `p` local). To draw from a logit-link model, inline the inverse link in `sim()`:
+
+```r
+y_tilde <- sim(dbinom(1, inv_logit(a + b*x)))
+```
+
+which produces `array[N] int y_tilde = bernoulli_rng(inv_logit(a + b*x));`.
+
+- Models without a `sim()` line are completely unaffected — no `generated quantities` block is emitted.
+
+**Running the full posterior-predictive workflow:**
+
+```bash
+swiftstan stancode --model <name>     # emits .stan with generated quantities block
+swiftstan csv2json --model <name>     # (if not already done)
+swiftstan compile --model <name>      # (if not already done)
+swiftstan sample --model <name>       # draws posterior samples
+swiftstan generatedquantities --model <name>  # re-runs GQ block → <name>.generated_quantities.csv
+```
 
 ### 2.4. Ulam reverse direction pipeline: `stan2alist`
 
@@ -1854,7 +1909,7 @@ Estimating `mu_alpha` and `sigma_alpha` from the data lets information *flow bet
 counties*: data-poor counties are shrunk toward the overall mean `mu_alpha`, while
 data-rich counties stay close to their own estimate.
 
-Rather than hand-write the `"<name>.alist.r"` for this model, this section starts from the other end. A Stan programmer would naturally write this model in idiomatic Stan — reaching for two features the generator does not emit: an `offset`/`multiplier` non-centred parameter and a `generated quantities` posterior-predictive block.
+Rather than hand-write the `"<name>.alist.r"` for this model, this section starts from the other end. A Stan programmer would naturally write this model in idiomatic Stan — reaching for two features beyond the basic forward pipeline: an `offset`/`multiplier` non-centred parameter (which `stancode` does not emit) and a `generated quantities` posterior-predictive block (which `stancode` can now emit via the `sim()` syntax — see §2.3.1 and §5.2.5).
 
 We take exactly such a hand-written file, run it **backwards** through `stan2alist` (§2) to recover an editable `"<name>.alist.r"`, copy that into the `radon_pp` case, and then drive it **forwards** through the
 usual `stancode → compile → csv2json → sample` pipeline. The forward Stan that results is byte-for-byte the centred model — demonstrating the `stan → stan2alist → stancode` round-trip end-to-end.
@@ -1919,16 +1974,17 @@ alist(
 )
 ```
 
-The two Stan features the template adds carry no `alist()` form and are deliberately
-reduced on the way back:
+The two Stan features the template adds are handled differently on the way back:
 
 - The `vector<offset=mu_alpha, multiplier=sigma_alpha>[N_county] alpha;` non-centred
   declaration is **stripped to the centred form**. The non-centred and centred
   parameterisations are statistically equivalent, and `stancode` only emits the centred
   one, so dropping the affine transform is exactly what makes the round-trip consistent.
-- The `generated quantities` block has **no `alist()` form and is dropped with the
-  stderr warning** shown above — `alist()` describes the model, not derived posterior
-  quantities.
+- The `generated quantities` block is **dropped with the stderr warning** shown above
+  on the `stan2alist` path. The reverse pipeline has no way to infer which `sim()` line
+  the user intended. However, you can add one yourself: see §2.3.1 for the `sim()`
+  syntax that causes `stancode` to emit a `generated quantities` block on the *forward*
+  pass, and §5.2.5 for an end-to-end example applied to the `radon_pp` model.
 
 (`stan2alist` refuses to overwrite an existing `.alist.R` unless `--force` is given; the
 `radon_pp_template` example ships without one, so the command runs clean.)
@@ -2096,6 +2152,52 @@ name,mean,mcse,stddev,mad,p05,p50,p95,ess_bulk,ess_tail,ess_bulk_per_s,R_hat
 
 After sampling, `Results/` mirrors the radon layout (§3.1.5), with `radon_pp.*`
 filenames.
+
+#### 5.2.8 Adding posterior-predictive draws with `sim()` and `generatedquantities`
+
+The template in §5.2.2 had a `generated quantities` block that `stan2alist` dropped. You can add the equivalent back to the alist using the `sim()` syntax (§2.3.1). Edit `radon_pp.alist.R` to add one line:
+
+```r
+alist(
+  log_radon ~ dnorm(alpha + beta * floor, sigma),
+  alpha[county] ~ dnorm(mu_alpha, sigma_alpha),
+  beta ~ dnorm(0, 10),
+  sigma ~ dnorm(0, 10),
+  mu_alpha ~ dnorm(0, 10),
+  sigma_alpha ~ dnorm(0, 10),
+  y_rep <- sim(dnorm(alpha[county] + beta * floor, sigma))
+)
+```
+
+Run `stancode` again:
+
+```bash
+swiftstan stancode --model radon_pp
+```
+
+The generated `Results/radon_pp.stan` now ends with:
+
+```stan
+generated quantities {
+  vector[N] y_rep = normal_rng(alpha[county] + beta*floor, sigma);
+}
+```
+
+Recompile (the `.stan` changed) and run `generatedquantities` on the existing draws:
+
+```bash
+swiftstan compile --model radon_pp
+swiftstan generatedquantities --model radon_pp
+```
+
+```
+→ Wrote cleaned radon_pp.generated_quantities.csv
+```
+
+`Results/radon_pp.generated_quantities.csv` contains one `y_rep[i]` column per
+observation, one row per posterior draw — 4 chains × 1000 samples = 4000 rows. Each row
+is a complete simulated dataset drawn from the posterior predictive distribution: it can
+be compared against the observed `log_radon` values for a posterior predictive check.
 
 ---
 

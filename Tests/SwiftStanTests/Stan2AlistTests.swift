@@ -143,8 +143,15 @@ struct Stan2AlistTests {
     #expect(args == ["alpha[county] + beta * floor", "sigma"])
     #expect(trunc == nil)
 
-    // generated quantities is recognised and dropped, not translated.
-    #expect(program.droppedBlocks == ["generated quantities"])
+    // generated quantities is parsed into gqStatements, not dropped.
+    #expect(program.droppedBlocks == [])
+    #expect(program.gqStatements.count == 1)
+    if case let .assignment(gqLhs, gqRhs) = program.gqStatements[0] {
+      #expect(gqLhs.hasSuffix("y_rep"))
+      #expect(gqRhs.hasPrefix("normal_rng("))
+    } else {
+      Issue.record("expected GQ statement to be an assignment")
+    }
   }
 
   @Test("a model line that is neither sampling nor assignment fails loud")
@@ -206,11 +213,13 @@ struct Stan2AlistTests {
              truncation: .none, constraints: .none, start: nil, useLpdf: false),
       .prior(name: "sigma_alpha", distribution: .normal(0, 10),
              truncation: .none, constraints: .none, start: nil, useLpdf: false),
+      .generatedQuantity(name: "y_rep",
+                         distribution: .normal(.expression("alpha[county] + beta * floor"), "sigma")),
     ]
 
     #expect(result.statements == expected)
-    // The dropped `generated quantities` block is surfaced as a warning.
-    #expect(result.warnings.contains { $0.contains("generated quantities") })
+    // The GQ block is now parsed — no warning expected.
+    #expect(result.warnings.isEmpty)
   }
 
   @Test("inv_logit assignment becomes a logit link")
@@ -262,7 +271,8 @@ struct Stan2AlistTests {
       beta ~ dnorm(0, 10),
       sigma ~ dnorm(0, 10),
       mu_alpha ~ dnorm(0, 10),
-      sigma_alpha ~ dnorm(0, 10)
+      sigma_alpha ~ dnorm(0, 10),
+      y_rep <- sim(dnorm(alpha[county] + beta * floor, sigma))
     )
 
     """
@@ -276,7 +286,8 @@ struct Stan2AlistTests {
     let text = try AlistTextEmitter.emit(statements)
 
     let parsed = try AlistParser.parse(text)
-    #expect(parsed.count == 6)
+    // 6 priors/likelihood + 1 sim() line = 7 statements.
+    #expect(parsed.count == 7)
     // First statement is the likelihood over the scalar outcome.
     guard case let .sample(lhs, dist, _) = parsed.first else {
       Issue.record("expected first parsed statement to be a sample")
@@ -288,6 +299,13 @@ struct Stan2AlistTests {
     #expect(parsed.contains { stmt in
       if case let .sample(lhs, _, _) = stmt {
         return lhs == .indexed(name: "alpha", indexColumn: "county")
+      }
+      return false
+    })
+    // The sim() line re-parses as a generatedQuantity statement.
+    #expect(parsed.contains { stmt in
+      if case let .generatedQuantity(target, dist) = stmt {
+        return target == "y_rep" && dist.name == "dnorm"
       }
       return false
     })

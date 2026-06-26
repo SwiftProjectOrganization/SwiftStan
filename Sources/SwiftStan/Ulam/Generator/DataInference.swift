@@ -126,6 +126,11 @@ struct InferredModel {
   /// from this list — their upper bound is encoded directly into the
   /// outcome declaration's `<upper=...>` constraint instead.
   let binomialRowChecks: [(outcome: String, trials: String)]
+  /// Posterior-predictive draws for the `generated quantities` block.
+  /// Each entry emits one `<type>[N] <name> = <dist>_rng(args);` line.
+  /// Sourced from `Statement.generatedQuantity` and consumed by
+  /// `BlockEmitter.generatedQuantitiesBlock`.
+  let generatedQuantities: [(name: String, distribution: Distribution)]
 }
 
 /// Monotonic effect spec (2026-06-02): per-`MonotonicEffect`
@@ -181,6 +186,7 @@ enum DataInferenceError: Error, CustomStringConvertible {
   case nestedVaryingPriorArity(name: String, got: Int)
   case countSymbolCollision(symbol: String, reason: String)
   case indexColumnValueOutOfRange(column: String, atIndex: Int, value: Int, reason: String)
+  case generatedQuantityReferencesLocal(name: String, symbol: String)
 
   var description: String {
     switch self {
@@ -219,6 +225,8 @@ enum DataInferenceError: Error, CustomStringConvertible {
       return "ulam: cardinality symbol '\(symbol)' collides with \(reason)"
     case .indexColumnValueOutOfRange(let column, let atIndex, let value, let reason):
       return "ulam: index column '\(column)' has value \(value) at row \(atIndex) — \(reason)"
+    case .generatedQuantityReferencesLocal(let name, let symbol):
+      return "ulam: generated quantity '\(name)' references '\(symbol)', which is a model-block local (Link/Deterministic). Stan's generated quantities block cannot see model-block locals — inline the expression (including any inverse link) directly in sim(...)."
     }
   }
 }
@@ -285,6 +293,7 @@ enum DataInference {
     // Literal-n / scalarInt-n cases skip this — their upper bound is
     // already tightened at the declaration site.
     var binomialRowChecks: [(outcome: String, trials: String)] = []
+    var generatedQuantities: [(name: String, distribution: Distribution)] = []
 
     // 2026-06-06: cardinality-symbol collision check (TODO §4).
     //
@@ -676,6 +685,9 @@ enum DataInference {
       case .deterministic(let lhs, let rhs):
         if !derived.contains(lhs) { derived.append(lhs) }
         for s in symbolsIn(rhs) { referenced.insert(s) }
+      case .generatedQuantity(let name, let dist):
+        generatedQuantities.append((name: name, distribution: dist))
+        for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
       }
     }
 
@@ -684,6 +696,19 @@ enum DataInference {
     // and sampling form.
     for name in scalarPriorNames.intersection(varyingPriorNames) {
       throw DataInferenceError.parameterIsBothScalarAndVarying(name: name)
+    }
+
+    // Generated quantities must not reference model-block locals (the
+    // LHS of Link/Deterministic statements) — Stan's `generated quantities`
+    // block doesn't have access to model-block local vectors.
+    let derivedSet = Set(derived)
+    for gq in generatedQuantities {
+      for sym in DistributionCatalog.symbolsReferenced(gq.distribution) {
+        if derivedSet.contains(sym) {
+          throw DataInferenceError.generatedQuantityReferencesLocal(
+            name: gq.name, symbol: sym)
+        }
+      }
     }
 
     // Ordered logit / probit (2026-06-02) post-fix: now that the
@@ -875,7 +900,8 @@ enum DataInference {
       gaussianProcessGP: gaussianProcessGP,
       squareMatrixColumns: squareMatrixColumns,
       initValues: initValues,
-      binomialRowChecks: binomialRowChecks
+      binomialRowChecks: binomialRowChecks,
+      generatedQuantities: generatedQuantities
     )
   }
 

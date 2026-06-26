@@ -159,6 +159,10 @@ internal struct AlistEmitter {
         if case .lkjCorrCholesky(let eta) = stmt.dist! {
           s += "      LKJCorrCholeskyPrior(\"\(stmt.name)\", dim: \"\(dim)\", eta: \(renderArg(eta)))\n"
         }
+      case .generatedQuantity:
+        // No Swift DSL node yet — emit a comment so the smoke driver
+        // still compiles; the stancode path handles GQ emission in-process.
+        s += "      // generated quantity: \(stmt.name) = \(renderDist(stmt.dist!))_rng\n"
       }
     }
     s += "    }\n"

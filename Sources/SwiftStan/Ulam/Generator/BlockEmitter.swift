@@ -248,6 +248,22 @@ enum BlockEmitter {
     return "\(value)"
   }
 
+  /// Emit the `generated quantities {}` block for posterior-predictive draws.
+  /// Returns nil when the model has no `generatedQuantity` statements, keeping
+  /// models without a `sim()` line byte-identical to their previous output.
+  static func generatedQuantitiesBlock(_ inferred: InferredModel) -> String? {
+    if inferred.generatedQuantities.isEmpty { return nil }
+    var lines = ["generated quantities {"]
+    for gq in inferred.generatedQuantities {
+      let rng  = DistributionCatalog.name(gq.distribution) + "_rng"
+      let args = DistributionCatalog.args(gq.distribution)
+      let decl = DistributionCatalog.isDiscrete(gq.distribution) ? "array[N] int" : "vector[N]"
+      lines.append("  \(decl) \(gq.name) = \(rng)(\(args));")
+    }
+    lines.append("}")
+    return lines.joined(separator: "\n")
+  }
+
   static func modelBlock(_ inferred: InferredModel,
                          statements: [Statement]) throws -> String {
     var lines: [String] = []
@@ -460,6 +476,9 @@ enum BlockEmitter {
         // NUTS warmup inits (2026-06-02): pure metadata — the
         // pipeline marshals it into `<name>.init.json` rather than
         // emitting any Stan source.
+        break
+      case .generatedQuantity:
+        // Emitted by generatedQuantitiesBlock, not the model block.
         break
       case .likelihood(let lhs, let dist, let trunc, let useLpdf):
         likelihoods.append(try emitSampling(lhs: lhs, distribution: dist,
@@ -678,7 +697,7 @@ enum BlockEmitter {
          .matrixPrior, .covMatrixPrior, .lkjCorrCholeskyPrior,
          .wishartPrior, .varyingVectorPrior, .gaussianProcessPrior,
          .orderedCutpointsPrior, .simplexPrior, .monotonicEffect,
-         .inits, .nestedVaryingPrior:
+         .inits, .nestedVaryingPrior, .generatedQuantity:
       // Distribution args are scalars in the current AST (literal or
       // symbol). For varying / vector / matrix / cov_matrix /
       // chol-factor / varying-vector / GP priors, the LHS is a vector-
@@ -1030,6 +1049,7 @@ enum BlockEmitter {
     case .nestedVaryingPrior(let name, _, _, _, _, _): return name
     case .link(_, let lhs, _):                return lhs
     case .deterministic(let lhs, _):          return lhs
+    case .generatedQuantity(let name, _):     return name
     }
   }
 

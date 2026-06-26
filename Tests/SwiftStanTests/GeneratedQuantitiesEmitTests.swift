@@ -179,6 +179,37 @@ struct Generated_QuantitiesEmitTests {
     #expect(stan.contains("array[N] real y_rep = normal_rng(alpha + beta*floor, sigma);"))
   }
 
+  // MARK: - Fail-loud: unsupported sim() distributions
+
+  @Test func simWithMultivariateDistributionThrows() throws {
+    // `multi_normal_rng` returns a vector — not a scalar — so the
+    // `array[N] real` declaration would be wrong Stan. Guard fires at
+    // DataInference time, before any Stan is emitted.
+    let data: UlamData = ["y": .real([1.0, 2.0, 3.0]),
+                          "x": .real([0.1, 0.2, 0.3])]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal("mu", "sigma"))
+      Prior("mu", .normal(0, 1))
+      Prior("sigma", .normal(0, 1), truncation: Truncation(lower: 0))
+      Sim("y_rep", .multivariateNormal(mu: "mu", sigma: "sigma"))
+    }
+    #expect(throws: DataInferenceError.self) {
+      _ = try stancode(model)
+    }
+  }
+
+  @Test func simWithLkjThrows() throws {
+    // `lkj_corr_cholesky_rng` does not exist in Stan's function library.
+    let data: UlamData = ["y": .real([1.0, 2.0, 3.0])]
+    let model = UlamModel(data: data) {
+      Likelihood("y", .normal(0, 1))
+      Sim("L_rep", .lkjCorrCholesky(2))
+    }
+    #expect(throws: DataInferenceError.self) {
+      _ = try stancode(model)
+    }
+  }
+
   // MARK: - Fail-loud: sim() referencing a model-block local
 
   @Test func simReferencingLocalThrows() throws {

@@ -97,18 +97,19 @@ model {
 Also reverse `lkjCorrCholeskyPriorMatchesGolden` (`:1045`) and
 `wishartPriorMatchesGolden` (`:1069`) as smaller unit fixtures.
 
-## 3. What the reverse pipeline lacks today
+## 3. Implementation status — all slices shipped ✅
 
-| Stage | File | Gap |
+| Stage | File | Status |
 |---|---|---|
-| Declaration types | `Stan2Alist/StanProgram.swift:34` | `StanType` has no `matrix` / `covMatrix` / `cholFactorCorr` / `arrayVector` cases — they fall to `.other` and `StanToUlamModel` rejects them (`unsupportedDeclaration`). |
-| Declaration parsing | `Stan2Alist/StanBlockParser.swift:173` (`classifyType`) | only `real`/`int`/`vector`/`array[…] int|real` recognised. |
-| Reverse catalog | `Generator/DistributionCatalog.swift:378` | `distribution(fromStanName:args:)` has no `multi_normal`, `multi_normal_cholesky`, `lkj_corr_cholesky`, `wishart` rows — throws `unsupportedDistribution`. |
-| Role inference | `Stan2Alist/StanToUlamModel.swift:91` | classifies only scalar/vector params; no chol-factor / array-vector / matrix / cov_matrix handling; a vector param whose size is a *plain cardinality* (not an index `upper`) throws "plain vector priors out of scope" (`:133`). |
-| Loop recognition | `Stan2Alist/StanBlockParser.swift:234` (`rewriteContractLoops`) | only the single-assignment contract loop `for (i in 1:N){ lhs[i]=rhs; }`. The SUR loop (`row_vector` local + `multi_normal` sampling, two statements, loop var `n`) **fails loud** (`unsupportedLoop`). |
-| `to_vector(...)` LHS | `Stan2Alist/StanToUlamModel.swift:115` | a sampling LHS that is a function call (`to_vector(beta)`) isn't recognised. |
-| alist text | `Stan2Alist/AlistTextEmitter.swift:54` | `renderStatement` covers only likelihood / prior / varyingPrior / link / deterministic; the multivariate statement cases hit the `default` → `unsupportedStatement`. |
-| Tests | `Tests/SwiftStanTests/Stan2AlistTests.swift:51` | `unsupportedDistributionThrows` *asserts* `multi_normal` rejects — must be replaced. |
+| Declaration types (M1) | `Stan2Alist/StanProgram.swift` | `StanType` gains `matrix`, `covMatrix`, `cholFactorCorr`, `arrayVector`. |
+| Declaration parsing (M1) | `Stan2Alist/StanBlockParser.swift` (`classifyType`) | All four new shapes parsed. |
+| Reverse catalog (M2) | `Generator/DistributionCatalog.swift` | `multi_normal`, `multi_normal_cholesky`, `lkj_corr_cholesky`, `wishart` added. |
+| Role inference (M3) | `Stan2Alist/StanToUlamModel.swift` | All parameter kinds classified; priors rebuilt in declaration order. `to_vector(<m>)` LHS handled. Plain vector priors (size not an index `upper`) emit `.vectorPrior`. |
+| SUR loop recognition (M4) | `Stan2Alist/StanBlockParser.swift` (`appendRewrittenSurLoop`) | Two-statement body lowered to `.assignment` + `.sampling`. |
+| alist text (M5) | `Stan2Alist/AlistTextEmitter.swift` | `vectorPrior`, `lkjCorrCholeskyPrior`, `wishartPrior`, `varyingVectorPrior`, `matrixPrior`, `covMatrixPrior` all render. |
+| Tests + oracle (M6) | `Tests/SwiftStanTests/Stan2AlistTests.swift` | Catalog symmetry extended to multivariate; `cafeMultivariateRoundTrip` and `surMultivariateRoundTrip` oracle tests pass byte-identically via `Stan → [Statement] → stancode`. |
+
+**Known limitation:** the full alist-text round-trip (`alist → stancode → stan2alist → stancode`) for multivariate models is blocked by `AlistLexer` not recognising the `'` transpose operator that appears in `[a_bar, b_bar]'` emitted by `AlistTextEmitter.renderStatement`. The oracle uses the `Stan → [Statement] → stancode` path directly, bypassing alist text. Deferred: AlistLexer `'` support; `c(...)` prior regrouping in Family A alist text.
 
 ## 4. Slices (independently testable)
 
@@ -261,17 +262,9 @@ catalog can't know the `dmvnorm2` vs `dmvnormchol` arg split.
 - Keep an off-contract loop (e.g. SUR body with a third statement) asserting
   `unsupportedLoop` — the fail-loud guard must survive.
 
-## 5. Implementation order
+## 5. Implementation order — completed
 
-1. **M1** (types + parser) — pure, no downstream coupling.
-2. **M2** (catalog) — pure, unit-tested by symmetry.
-3. **M3** (role inference) — unlocks **Family A** end-to-end; run its oracle.
-4. **M4** (SUR recognizer) — unlocks **Family B**; run its oracle.
-5. **M5** (alist text) — cosmetic; no oracle dependence.
-6. **M6** — full oracle matrix; replace the obsolete reject-test.
-
-Family A is reachable after M1–M3 (its loop is already the contract shape).
-Family B additionally needs M4. Ship A first if a checkpoint is wanted.
+All six slices shipped in a single pass. M1–M3 unlocked Family A (cafe); M4 additionally unlocked Family B (SUR). Family A is byte-identical via the `Stan → [Statement] → stancode` oracle. Family B likewise. The alist-text round-trip is blocked only by the `AlistLexer '` gap (see §3).
 
 ## 6. Locked decisions & known losses
 

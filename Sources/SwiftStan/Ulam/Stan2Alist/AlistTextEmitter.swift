@@ -66,6 +66,21 @@ enum AlistTextEmitter {
       return "\(lhs) <- \(rhs.source)"
     case let .generatedQuantity(name, dist):
       return "\(name) <- sim(\(renderDistribution(dist)))"
+    case let .vectorPrior(name, _, dist, _, _):
+      return "\(name) ~ \(renderDistribution(dist))"
+    case let .lkjCorrCholeskyPrior(name, _, eta):
+      return "\(name) ~ dlkjcorr(\(DistributionCatalog.arg(eta)))"
+    case let .wishartPrior(name, _, nu, V):
+      return "\(name) ~ dwishart(\(DistributionCatalog.arg(nu)), \(DistributionCatalog.arg(V)))"
+    case let .varyingVectorPrior(name, indexedBy, _, _, dist, _, _):
+      return "\(name)[\(indexedBy)] ~ \(renderDistribution(dist))"
+    case let .matrixPrior(name, _, _, dist, _, _):
+      return "\(name) ~ \(renderDistribution(dist))"
+    case .covMatrixPrior:
+      // Declaration-only — no alist sampling idiom. Emit a comment so
+      // the file is human-readable; the forward pass re-derives it from
+      // the model structure.
+      return "# cov_matrix prior (declaration-only — re-derived by stancode)"
     default:
       throw AlistTextEmitError.unsupportedStatement(String(describing: statement))
     }

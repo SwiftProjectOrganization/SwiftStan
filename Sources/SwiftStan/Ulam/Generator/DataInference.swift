@@ -187,6 +187,7 @@ enum DataInferenceError: Error, CustomStringConvertible {
   case countSymbolCollision(symbol: String, reason: String)
   case indexColumnValueOutOfRange(column: String, atIndex: Int, value: Int, reason: String)
   case generatedQuantityReferencesLocal(name: String, symbol: String)
+  case unsupportedSimDistribution(name: String, distribution: String)
 
   var description: String {
     switch self {
@@ -227,6 +228,8 @@ enum DataInferenceError: Error, CustomStringConvertible {
       return "ulam: index column '\(column)' has value \(value) at row \(atIndex) — \(reason)"
     case .generatedQuantityReferencesLocal(let name, let symbol):
       return "ulam: generated quantity '\(name)' references '\(symbol)', which is a model-block local (Link/Deterministic). Stan's generated quantities block cannot see model-block locals — inline the expression (including any inverse link) directly in sim(...)."
+    case .unsupportedSimDistribution(let name, let dist):
+      return "ulam: Sim('\(name)', .\(dist)) — '\(dist)' cannot be used with sim(): Stan has no scalar-returning \(dist)_rng() function. Use a univariate distribution (normal, bernoulli, binomial, beta, exponential, poisson, gamma, cauchy, lognormal, uniform, student_t, ordered_logistic)."
     }
   }
 }
@@ -686,6 +689,11 @@ enum DataInference {
         if !derived.contains(lhs) { derived.append(lhs) }
         for s in symbolsIn(rhs) { referenced.insert(s) }
       case .generatedQuantity(let name, let dist):
+        guard DistributionCatalog.supportsScalarRng(dist) else {
+          throw DataInferenceError.unsupportedSimDistribution(
+            name: name,
+            distribution: DistributionCatalog.name(dist))
+        }
         generated_Quantities.append((name: name, distribution: dist))
         for s in DistributionCatalog.symbolsReferenced(dist) { referenced.insert(s) }
       }

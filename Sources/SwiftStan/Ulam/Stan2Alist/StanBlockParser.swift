@@ -179,13 +179,40 @@ enum StanBlockParser {
   private static func classifyType(_ spec: String) -> StanType {
     let s = spec.trimmingCharacters(in: .whitespaces)
     if s.hasPrefix("array[") {
-      let size = bracketContents(s, after: "array") ?? "N"
-      if s.contains(" int") || s.hasSuffix("int") { return .arrayInt(size: size) }
-      if s.contains(" real") || s.hasSuffix("real") { return .arrayReal(size: size) }
+      let outer = bracketContents(s, after: "array") ?? "N"
+      // `array[<outer>] vector[<length>]` — varying-vector parameter.
+      if let vecRange = s.range(of: "vector[") {
+        let rest = String(s[vecRange.lowerBound...])
+        if let length = bracketContents(rest, after: "vector") {
+          return .arrayVector(outer: outer, length: length)
+        }
+      }
+      if s.contains(" int") || s.hasSuffix("int") { return .arrayInt(size: outer) }
+      if s.contains(" real") || s.hasSuffix("real") { return .arrayReal(size: outer) }
       return .other(s)
     }
     if s.hasPrefix("vector") {
       if let size = bracketContents(s, after: "vector") { return .vector(size: size) }
+      return .other(s)
+    }
+    if s.hasPrefix("cholesky_factor_corr") {
+      if let dim = bracketContents(s, after: "cholesky_factor_corr") {
+        return .cholFactorCorr(dim: dim)
+      }
+      return .other(s)
+    }
+    if s.hasPrefix("cov_matrix") {
+      if let dim = bracketContents(s, after: "cov_matrix") { return .covMatrix(dim: dim) }
+      return .other(s)
+    }
+    if s.hasPrefix("matrix[") {
+      // `matrix[<rows>, <cols>]` — split bracket contents on the top-level comma.
+      if let inner = bracketContents(s, after: "matrix") {
+        let parts = inner.split(separator: ",", maxSplits: 1).map {
+          $0.trimmingCharacters(in: .whitespaces)
+        }
+        if parts.count == 2 { return .matrix(rows: parts[0], cols: parts[1]) }
+      }
       return .other(s)
     }
     if s == "real" { return .real }
@@ -305,17 +332,62 @@ enum StanBlockParser {
       throw StanBlockParseError.unsupportedLoop
     }
     let bodyStatements = splitStatements(inner)
-    guard bodyStatements.count == 1 else { throw StanBlockParseError.unsupportedLoop }
-    let stmt = bodyStatements[0]
-    // The contract body is a single assignment (`lhs[i] = rhs`), never a
-    // sampling statement.
-    guard stmt.contains("="), !stmt.contains("~") else {
+    if bodyStatements.count == 1 {
+      let stmt = bodyStatements[0]
+      // Contract body: single assignment `lhs[i] = rhs`, never a sampling statement.
+      guard stmt.contains("="), !stmt.contains("~") else {
+        throw StanBlockParseError.unsupportedLoop
+      }
+      out.append(desubscript(stmt, loopVar: loopVar))
+      out.append(";")
+    } else if bodyStatements.count == 2 {
+      // SUR contract body: `row_vector[<dim>] <local> = <rhs>; <outcome>[n] ~ <dist>;`
+      // Lower to two flat statements, keeping rhs verbatim (BlockEmitter reads it back
+      // via detectSurLoops and re-emits the loop identically).
+      try appendRewrittenSurLoop(bodyStatements, loopVar: loopVar, into: &out)
+    } else {
       throw StanBlockParseError.unsupportedLoop
     }
-
-    out.append(desubscript(stmt, loopVar: loopVar))
-    out.append(";")
     return closeBrace + 1
+  }
+
+  /// Rewrite a two-statement SUR loop body into two flat model statements.
+  ///
+  /// Contract shape (BlockEmitter SUR Slices D+E):
+  ///   `row_vector[<dim>] <local> = <rhs>;`
+  ///   `<outcome>[<n>] ~ multi_normal(<local>, <cov>);`
+  ///
+  /// Lowers to:
+  ///   `<local> = <rhs>;`          — assignment, RHS kept verbatim
+  ///   `<outcome> ~ multi_normal(<local>, <cov>);`  — sampling, `[n]` stripped
+  private static func appendRewrittenSurLoop(_ stmts: [String],
+                                             loopVar: String,
+                                             into out: inout String) throws {
+    let s0 = collapseWhitespace(stmts[0]).trimmingCharacters(in: .whitespaces)
+    let s1 = collapseWhitespace(stmts[1]).trimmingCharacters(in: .whitespaces)
+
+    // First statement: `row_vector[<dim>] <local> = <rhs>`
+    // Strip the leading type spec (`row_vector[<dim>]`) to get `local = rhs`.
+    guard let eqRange0 = s0.range(of: "="),
+          !s0.contains("~") else {
+      throw StanBlockParseError.unsupportedLoop
+    }
+    let lhsFull0 = String(s0[..<eqRange0.lowerBound]).trimmingCharacters(in: .whitespaces)
+    let rhs0     = String(s0[eqRange0.upperBound...]).trimmingCharacters(in: .whitespaces)
+    // The local name is the last identifier in the possibly-typed LHS.
+    guard let localName = lastIdentifier(in: lhsFull0), !localName.isEmpty else {
+      throw StanBlockParseError.unsupportedLoop
+    }
+    // Emit the assignment with the RHS verbatim (BlockEmitter's detectSurLoops
+    // re-reads `meanRhsSource` from .deterministic's rhs.source).
+    out.append("\(localName) = \(rhs0);")
+
+    // Second statement: `<outcome>[<loopVar>] ~ <dist>(<args>)`
+    guard s1.contains("~") else { throw StanBlockParseError.unsupportedLoop }
+    // Strip the `[<loopVar>]` subscript from the outcome LHS.
+    let normalised1 = desubscript(s1, loopVar: loopVar)
+    out.append(normalised1)
+    out.append(";")
   }
 
   /// Validate a contract loop header `i in 1:N` and return the loop

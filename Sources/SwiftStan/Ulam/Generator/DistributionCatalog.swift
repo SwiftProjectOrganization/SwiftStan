@@ -86,6 +86,24 @@ enum DistributionCatalog {
     }
   }
 
+  /// True when Stan has a scalar-returning `<name>_rng(...)` function for
+  /// this distribution — i.e. it is safe to use with `Sim()`.
+  ///
+  /// Distributions that fail this check either have no `_rng` in Stan
+  /// (`lkj_corr_cholesky_rng`, `ordered_probit_rng`) or their `_rng`
+  /// returns a non-scalar type (`multi_normal_rng` → vector,
+  /// `wishart_rng` → matrix, `dirichlet_rng` → simplex vector).
+  static func supportsScalarRng(_ distribution: Distribution) -> Bool {
+    switch distribution {
+    case .normal, .bernoulli, .binomial, .beta, .exponential, .poisson,
+         .gamma, .cauchy, .lognormal, .uniform, .studentT, .orderedLogistic:
+      return true
+    case .multivariateNormal, .multivariateNormalCholesky, .lkjCorrCholesky,
+         .wishart, .dirichlet, .orderedProbit:
+      return false
+    }
+  }
+
   /// True for distributions whose LHS is a vector / matrix
   /// rather than a scalar. Phase 6 uses this to reject truncation on
   /// the multivariate-normal case (Stan doesn't support `T[...]` on
@@ -387,6 +405,14 @@ extension DistributionCatalog {
     case "lognormal":   try require(2); return .lognormal(a[0], a[1])
     case "uniform":     try require(2); return .uniform(lower: a[0], upper: a[1])
     case "student_t":   try require(3); return .studentT(nu: a[0], mu: a[1], sigma: a[2])
+    case "multi_normal":
+      try require(2); return .multivariateNormal(mu: a[0], sigma: a[1])
+    case "multi_normal_cholesky":
+      try require(2); return .multivariateNormalCholesky(mean: a[0], chol: a[1])
+    case "lkj_corr_cholesky":
+      try require(1); return .lkjCorrCholesky(a[0])
+    case "wishart":
+      try require(2); return .wishart(nu: a[0], V: a[1])
     default:
       throw ReverseError.unsupportedDistribution(name)
     }

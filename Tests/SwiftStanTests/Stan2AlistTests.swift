@@ -33,6 +33,14 @@ struct Stan2AlistTests {
     .lognormal(0, "sigma"),
     .uniform(lower: 0, upper: 50),
     .studentT(nu: 3, mu: 0, sigma: "sigma"),
+    // Multivariate distributions (M2 catalog additions).
+    // Use simple identifier args — no inner commas — because the symmetry
+    // test splits the rendered arg string on ", " and compound expressions
+    // like `diag_pre_multiply(x, y)` would split mid-call.
+    .multivariateNormal(mu: "mu", sigma: "Sigma"),
+    .multivariateNormalCholesky(mean: "mu_ab", chol: "L"),
+    .lkjCorrCholesky(2),
+    .wishart(nu: 3, V: "S"),
   ]
 
   @Test("reverse catalog is the inverse of the forward catalog")
@@ -48,13 +56,10 @@ struct Stan2AlistTests {
     }
   }
 
-  @Test("unsupported (multivariate) distribution fails loud")
-  func unsupportedDistributionThrows() {
-    #expect(throws: DistributionCatalog.ReverseError.self) {
-      _ = try DistributionCatalog.distribution(fromStanName: "multi_normal",
-                                               args: ["mu", "Sigma"])
-    }
-  }
+  // multi_normal and other multivariate distributions are now supported in
+  // the reverse catalog (M2). Symmetry is verified by `reverseCatalogIsSymmetric`
+  // above via the `roundTripCases` array. An arity mismatch on a multivariate
+  // distribution still fails loud (covered by `arityMismatchThrows` below).
 
   @Test("argument-count mismatch fails loud")
   func arityMismatchThrows() {
@@ -192,10 +197,17 @@ struct Stan2AlistTests {
     let result = try StanToUlamModel.build(program)
 
     let expected: [Statement] = [
+      // Priors are now in parameter-declaration order (mu_alpha, sigma_alpha,
+      // alpha, beta, sigma) — the forward emitter uses declaration order so
+      // the byte-identical oracle is preserved.
       .likelihood(lhs: "log_radon",
                   distribution: .normal(.expression("alpha[county] + beta * floor"), "sigma"),
                   truncation: .none,
                   useLpdf: false),
+      .prior(name: "mu_alpha", distribution: .normal(0, 10),
+             truncation: .none, constraints: .none, start: nil, useLpdf: false),
+      .prior(name: "sigma_alpha", distribution: .normal(0, 10),
+             truncation: .none, constraints: .none, start: nil, useLpdf: false),
       .varyingPrior(name: "alpha",
                     indexedBy: "county",
                     countSymbol: nil,
@@ -208,10 +220,6 @@ struct Stan2AlistTests {
       .prior(name: "beta", distribution: .normal(0, 10),
              truncation: .none, constraints: .none, start: nil, useLpdf: false),
       .prior(name: "sigma", distribution: .normal(0, 10),
-             truncation: .none, constraints: .none, start: nil, useLpdf: false),
-      .prior(name: "mu_alpha", distribution: .normal(0, 10),
-             truncation: .none, constraints: .none, start: nil, useLpdf: false),
-      .prior(name: "sigma_alpha", distribution: .normal(0, 10),
              truncation: .none, constraints: .none, start: nil, useLpdf: false),
       .generatedQuantity(name: "y_rep",
                          distribution: .normal(.expression("alpha[county] + beta * floor"), "sigma")),
@@ -264,14 +272,15 @@ struct Stan2AlistTests {
     let statements = try StanToUlamModel.build(program).statements
     let text = try AlistTextEmitter.emit(statements)
 
+    // Priors in parameter-declaration order: mu_alpha, sigma_alpha, alpha, beta, sigma.
     let expected = """
     alist(
       log_radon ~ dnorm(alpha[county] + beta * floor, sigma),
+      mu_alpha ~ dnorm(0, 10),
+      sigma_alpha ~ dnorm(0, 10),
       alpha[county] ~ dnorm(mu_alpha, sigma_alpha),
       beta ~ dnorm(0, 10),
       sigma ~ dnorm(0, 10),
-      mu_alpha ~ dnorm(0, 10),
-      sigma_alpha ~ dnorm(0, 10),
       y_rep <- sim(dnorm(alpha[county] + beta * floor, sigma))
     )
 
@@ -444,11 +453,10 @@ struct Stan2AlistTests {
               "round-trip diverged for \(fixture):\n--- original ---\n\(original)\n--- roundtrip ---\n\(roundtrip)")
     }
 
-    /// `StanBlockParser` inverts only the single-assignment contract loop
-    /// the forward emitter produces (`for (i in 1:N) { lhs[i] = rhs; }`).
-    /// A loop with a multi-statement body — a genuinely per-row model that
-    /// needs a real loop — is off-contract and must still fail loud rather
-    /// than mis-parse the body.
+    /// `StanBlockParser` handles the exact 1- and 2-statement contract
+    /// loops the forward emitter produces. A 3-statement body, a `while`,
+    /// or a non-`1:N` bound is genuinely off-contract and must still fail
+    /// loud rather than mis-parse.
     @Test("an off-contract loop body fails loud")
     func offContractLoopFailsLoud() throws {
       let model = "stan2alist_loop_fixture"
@@ -456,22 +464,25 @@ struct Stan2AlistTests {
       try ensureCaseDirectories(paths)
       defer { try? FileManager.default.removeItem(at: caseRoot().appendingPathComponent(model)) }
 
-      // Two statements in the loop body (an assignment plus a per-row
-      // sampling statement) — not the single-assignment contract loop.
+      // Three statements in the loop body — beyond the 2-statement SUR contract.
       let offContract = """
       data {
         int<lower=0> N;
-        array[N] real y;
+        matrix[N, 2] y;
+        matrix[N, 2] x;
+        int J;
+        int K;
       }
       parameters {
-        real mu;
-        real<lower=0> sigma;
+        matrix[K, J] beta;
+        cov_matrix[J] Sigma;
+        real extra;
       }
       model {
-        vector[N] m;
-        for (i in 1:N) {
-          m[i] = mu;
-          y[i] ~ normal(m[i], sigma);
+        for (n in 1:N) {
+          row_vector[J] mu = x[n]*beta;
+          real z = extra + 1;
+          y[n] ~ multi_normal(mu, Sigma);
         }
       }
       """
@@ -482,6 +493,101 @@ struct Stan2AlistTests {
       #expect(throws: Stan2AlistError.self) {
         _ = try stan2alist(model: model, force: true)
       }
+    }
+
+    // MARK: - Multivariate oracle: Stan → [Statement] → stancode byte-identical
+
+    /// Family A oracle: `StanBlockParser` + `StanToUlamModel` reconstruct the
+    /// exact `[Statement]` list from the cafe varying-slopes golden, and
+    /// `stancode` re-emits the same Stan byte-for-byte.
+    /// Alist text is not tested here — it uses `'` (transpose) which the
+    /// AlistLexer doesn't support; the Stan-level oracle is the hard gate.
+    @Test("Family A (cafe varying-slopes) Stan → parse → stancode is byte-identical")
+    func cafeMultivariateRoundTrip() throws {
+      let original = """
+      // Generated by SwiftStan ulam port.
+      data {
+        int<lower=1> N;
+        int<lower=1> N_cafe;
+        vector[N] afternoon;
+        array[N] int<lower=1, upper=N_cafe> cafe;
+        vector[N] wait;
+        int J;
+      }
+      parameters {
+        real a_bar;
+        real b_bar;
+        real<lower=0> sigma;
+        vector<lower=0>[J] sigma_ab;
+        cholesky_factor_corr[J] L_Omega;
+        array[N_cafe] vector[J] ab;
+      }
+      model {
+        vector[N] mu;
+        for (i in 1:N) {
+          mu[i] = ab[cafe[i]][1] + ab[cafe[i]][2]*afternoon[i];
+        }
+        a_bar ~ normal(0, 5);
+        b_bar ~ normal(0, 5);
+        sigma ~ exponential(1) T[0, ];
+        sigma_ab ~ exponential(1) T[0, ];
+        L_Omega ~ lkj_corr_cholesky(2);
+        ab ~ multi_normal_cholesky([a_bar, b_bar]', diag_pre_multiply(sigma_ab, L_Omega));
+        wait ~ normal(mu, sigma);
+      }
+      """
+      let program = try StanBlockParser.parse(original)
+      let result = try StanToUlamModel.build(program)
+      let data: UlamData = [
+        "afternoon": .real([0.0, 1.0, 0.0, 1.0, 0.0, 1.0]),
+        "cafe":      .integer([1, 1, 2, 2, 3, 3]),
+        "wait":      .real([3.0, 2.5, 3.2, 3.0, 4.0, 3.8]),
+        "J":         .scalarInt(2),
+      ]
+      let rebuilt = UlamModel(data: data, statements: result.statements)
+      let roundtrip = try stancode(rebuilt)
+      #expect(roundtrip == original,
+              "cafe round-trip diverged:\n--- original ---\n\(original)\n--- roundtrip ---\n\(roundtrip)")
+    }
+
+    /// Family B oracle: `StanBlockParser` + `StanToUlamModel` reconstruct the
+    /// SUR WaffleDivorce model from its Stan golden, and `stancode` re-emits
+    /// the same Stan byte-for-byte.
+    @Test("Family B (SUR) Stan → parse → stancode is byte-identical")
+    func surMultivariateRoundTrip() throws {
+      let original = """
+      // Generated by SwiftStan ulam port.
+      data {
+        int<lower=1> N;
+        matrix[N, 2] x;
+        matrix[N, 2] y;
+        int J;
+        int K;
+      }
+      parameters {
+        matrix[K, J] beta;
+        cov_matrix[J] Sigma;
+      }
+      model {
+        to_vector(beta) ~ normal(0, 1);
+        for (n in 1:N) {
+          row_vector[J] mu = x[n]*beta;
+          y[n] ~ multi_normal(mu, Sigma);
+        }
+      }
+      """
+      let program = try StanBlockParser.parse(original)
+      let result = try StanToUlamModel.build(program)
+      let data: UlamData = [
+        "K": .scalarInt(2),
+        "J": .scalarInt(2),
+        "x": .realMatrix(rows: 3, cols: 2, values: [[1, 25.3], [1, 26.0], [1, 25.8]]),
+        "y": .realMatrix(rows: 3, cols: 2, values: [[12.7, 20.2], [11.0, 18.6], [13.5, 21.0]]),
+      ]
+      let rebuilt = UlamModel(data: data, statements: result.statements)
+      let roundtrip = try stancode(rebuilt)
+      #expect(roundtrip == original,
+              "SUR round-trip diverged:\n--- original ---\n\(original)\n--- roundtrip ---\n\(roundtrip)")
     }
   }
 }

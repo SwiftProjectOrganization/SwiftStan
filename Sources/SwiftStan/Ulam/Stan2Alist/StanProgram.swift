@@ -40,6 +40,14 @@ enum StanType: Equatable {
   case arrayInt(size: String)
   /// `array[<size>] real`
   case arrayReal(size: String)
+  /// `array[<outer>] vector[<length>]` — varying-vector parameter shape.
+  case arrayVector(outer: String, length: String)
+  /// `matrix[<rows>, <cols>]`
+  case matrix(rows: String, cols: String)
+  /// `cov_matrix[<dim>]`
+  case covMatrix(dim: String)
+  /// `cholesky_factor_corr[<dim>]`
+  case cholFactorCorr(dim: String)
   /// Any spec we don't model yet — kept verbatim.
   case other(String)
 }

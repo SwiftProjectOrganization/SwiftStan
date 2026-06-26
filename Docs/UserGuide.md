@@ -262,24 +262,64 @@ In the SwiftStan directory:
 
 ### Alist distribution names to Stan distribution names
 
-| Alist (R) name | Stan name | Notes |
-|---|---|---|
-| `dnorm(mu, sigma)` | `normal` | |
-| `dbinom(1, p)` | `bernoulli` | McElreath shorthand; collapses in lowering |
-| `dbern(p)` | `bernoulli` | Direct 1-arg form |
-| `dbinom(n, p)` | `binomial` | General case |
-| `dbeta(a, b)` | `beta` | |
-| `dexp(r)` | `exponential` | |
-| `dpois(r)` | `poisson` | |
-| `dgamma(shape, rate)` | `gamma` | |
-| `dcauchy(mu, sigma)` | `cauchy` | |
-| `dlnorm(mu, sigma)` | `lognormal` | |
-| `dunif(lower, upper)` | `uniform` | |
-| `dt(nu, mu, sigma)` | `student_t` | |
-| `dmvnorm(mu, sigma)` | `multi_normal` | |
-| `dlkjcorr(eta)` | `lkj_corr_cholesky` | Maps to Cholesky form |
-| `dmvnormchol(Mu, L_Rho, sigma)` | `multi_normal_cholesky` | Grouped-indexed only |
-| `dmvnorm2(Mu, sigma, Rho)` | `multi_normal_cholesky` | Grouped-indexed only |
+These are the R alist names that `stancode` / `alist2dsl` recognise. DSL-only distributions (not accessible from an `.alist.R` file) are noted in the second column.
+
+| Alist (R) name | Stan sampling name | DSL node | Notes |
+|---|---|---|---|
+| `dnorm(mu, sigma)` | `normal` | `Prior` / `Likelihood` | |
+| `dbinom(1, p)` | `bernoulli` | `Likelihood` | McElreath shorthand; collapses in lowering |
+| `dbern(p)` | `bernoulli` | `Likelihood` | Direct 1-arg form |
+| `dbinom(n, p)` | `binomial` | `Likelihood` | General case |
+| `dbeta(a, b)` | `beta` | `Prior` | |
+| `dexp(r)` | `exponential` | `Prior` | |
+| `dpois(r)` | `poisson` | `Likelihood` | |
+| `dgamma(shape, rate)` | `gamma` | `Prior` | |
+| `dcauchy(mu, sigma)` | `cauchy` | `Prior` | |
+| `dlnorm(mu, sigma)` | `lognormal` | `Prior` | |
+| `dunif(lower, upper)` | `uniform` | `Prior` | |
+| `dt(nu, mu, sigma)` | `student_t` | `Prior` | |
+| `dmvnorm(mu, sigma)` | `multi_normal` | `Likelihood` | SUR only |
+| `dlkjcorr(eta)` | `lkj_corr_cholesky` | `LKJCorrCholeskyPrior` | Grouped-indexed; maps to Cholesky form |
+| `dmvnormchol(Mu, L_Rho, sigma)` | `multi_normal_cholesky` | `VaryingVectorPrior` | Grouped-indexed only |
+| `dmvnorm2(Mu, sigma, Rho)` | `multi_normal_cholesky` | `VaryingVectorPrior` | Grouped-indexed only; arg order differs from `dmvnormchol` |
+| — *(DSL only)* | `wishart` | `WishartPrior` | No alist name |
+| — *(DSL only)* | `ordered_logistic` | `Likelihood` + `OrderedCutpoints` | No alist name |
+| — *(DSL only)* | `ordered_probit` | `Likelihood` + `OrderedCutpoints` | No alist name |
+| — *(DSL only)* | `dirichlet` | `Prior` | No alist name; used with `SimplexPrior` |
+
+### `Sim()` / `sim()` — posterior-predictive draws and `_rng` support
+
+`Sim("y_rep", .dist(...))` in the DSL (written `y_rep <- sim(d*(...))` in an `.alist.R`) emits a `generated quantities` block entry of the form `array[N] int/real y_rep = dist_rng(args);`. The `_rng` name is the Stan sampling name with `_rng` appended; the output type is `array[N] int` for discrete distributions and `array[N] real` for continuous ones.
+
+**Supported — Stan has a scalar-returning `_rng` function:**
+
+| Distribution | Alist `sim()` | DSL `Sim()` | Stan emitted | Output type |
+|---|---|---|---|---|
+| `normal` | `sim(dnorm(mu, sigma))` | `.normal(mu, sigma)` | `normal_rng(mu, sigma)` | `array[N] real` |
+| `bernoulli` | `sim(dbinom(1, p))` | `.bernoulli(p: p)` | `bernoulli_rng(p)` | `array[N] int` |
+| `binomial` | `sim(dbinom(n, p))` | `.binomial(n: n, p: p)` | `binomial_rng(n, p)` | `array[N] int` |
+| `beta` | `sim(dbeta(a, b))` | `.beta(a, b)` | `beta_rng(a, b)` | `array[N] real` |
+| `exponential` | `sim(dexp(r))` | `.exponential(r)` | `exponential_rng(r)` | `array[N] real` |
+| `poisson` | `sim(dpois(r))` | `.poisson(r)` | `poisson_rng(r)` | `array[N] int` |
+| `gamma` | `sim(dgamma(shape, rate))` | `.gamma(shape, rate)` | `gamma_rng(shape, rate)` | `array[N] real` |
+| `cauchy` | `sim(dcauchy(mu, sigma))` | `.cauchy(mu, sigma)` | `cauchy_rng(mu, sigma)` | `array[N] real` |
+| `lognormal` | `sim(dlnorm(mu, sigma))` | `.lognormal(mu, sigma)` | `lognormal_rng(mu, sigma)` | `array[N] real` |
+| `uniform` | `sim(dunif(a, b))` | `.uniform(lower: a, upper: b)` | `uniform_rng(a, b)` | `array[N] real` |
+| `student_t` | `sim(dt(nu, mu, sigma))` | `.studentT(nu: nu, mu: mu, sigma: sigma)` | `student_t_rng(nu, mu, sigma)` | `array[N] real` |
+| `ordered_logistic` | — *(DSL only)* | `.orderedLogistic(eta: eta, cutpoints: c)` | `ordered_logistic_rng(eta, c)` | `array[N] int` |
+
+**Not supported in `Sim()` — no scalar Stan `_rng` or wrong return type:**
+
+| Distribution | Reason |
+|---|---|
+| `multi_normal` | `multi_normal_rng` returns a `vector`, not a scalar — `array[N] real` declaration is wrong |
+| `multi_normal_cholesky` | `multi_normal_cholesky_rng` returns a `vector` — same issue |
+| `lkj_corr_cholesky` | `lkj_corr_cholesky_rng` does not exist in Stan's function library |
+| `wishart` | `wishart_rng` returns a `matrix` — `array[N] real` is wrong |
+| `dirichlet` | `dirichlet_rng` returns a `vector` (simplex) — `array[N] real` is wrong |
+| `ordered_probit` | `ordered_probit_rng` does not exist in Stan's function library |
+
+Using any of the unsupported distributions with `Sim()` throws `DataInferenceError.unsupportedSimDistribution` at code-generation time — before any Stan is emitted.
 
 
 ## Additional project documentation

@@ -148,22 +148,26 @@ scope → fail loud.
 
 ## 7. Tests (`Stan2AlistTests.swift`, Swift Testing)
 
-- `reverseCatalogIsSymmetric` — every `Distribution` survives `name → distribution(fromStanName:)`.
-- `parsesRadonPpStan` — `StanBlockParser` accepts `radon_pp.stan`, drops `generated quantities` with a recorded warning.
-- `radonPpReverseProducesExpectedAlist` — full pipeline yields the §2 target alist.
+- `reverseCatalogIsSymmetric` — every `Distribution` (univariate + multivariate) survives `name → distribution(fromStanName:)`.
+- `parsesRadonPpStan` — `StanBlockParser` accepts `radon_pp.stan`, parses `generated quantities` into `gqStatements`.
+- `radonPpReverseProducesExpectedAlist` — full pipeline yields the §2 target alist (priors in parameter-declaration order).
 - `rejectsUnknownStanLine` — fail-loud on a line outside the grammar.
-- `roundTripsThroughStancode` (`howell`, `multilevel`, `chimpanzees`) — alist → `stancode` → `stan2alist` → `stancode` byte-identical (the oracle). chimpanzees exercises the loop path (its `vector * vector` term emits a `for (i in 1:N)` loop, which the parser inverts — see `Docs/LoopEmissionPlan.md`). `offContractLoopFailsLoud` asserts an off-contract loop (multi-statement body) still fails loud.
+- `roundTripsThroughStancode` (`howell`, `multilevel`, `chimpanzees`) — alist → `stancode` → `stan2alist` → `stancode` byte-identical. chimpanzees exercises the contract loop path.
+- `cafeMultivariateRoundTrip` / `surMultivariateRoundTrip` — `Stan → StanBlockParser → StanToUlamModel → stancode` byte-identical for Family A (cafe) and Family B (SUR). These bypass alist text (blocked by `AlistLexer` not handling `'`).
+- `offContractLoopFailsLoud` — a 3-statement loop body throws `unsupportedLoop`.
 - `radon_pp.stan` is exercised inline (string constant) rather than staged from `Tests/TestDataFiles/`, keeping the Slice B–E unit tests self-contained.
 
 ## 8. Locked decisions
 
-1. **v1 coverage:** strip offset/multiplier → centered prior; parse-and-drop `generated quantities` (and `transformed *`) with a loud warning. `radon_pp` is a working example in v1.
+1. **v1 coverage:** strip offset/multiplier → centered prior; parse-and-drop `transformed *` with a loud warning; `generated quantities` now parsed into `gqStatements`. `radon_pp` is a working example.
 2. **Overwrite guard:** refuse to clobber an existing `Preliminaries/<name>.alist.R` unless `--force` is passed.
-3. Multivariate distributions and general (non-idiomatic) Stan are out of v1 scope and fail loud.
+3. Off-contract loops (`while`, 3+-statement bodies, non-`1:N` bounds) and non-idiomatic Stan still fail loud.
+4. **Parameter-declaration order:** priors are rebuilt by iterating `parameterDecls` in order, so `parametersBlock` is byte-identical to the forward emitter.
 
-## 9. Risks
+## 9. Risks (resolved)
 
-- **Scope creep into general Stan.** Mitigation: fail-loud grammar; multivariates rejected in v1.
-- **`c(a,b,c) ~ dnorm(...)` regrouping.** Forward lowering expands a `c(...)` prior into separate scalar priors, so the reverse yields N separate lines unless `AlistTextEmitter` re-groups identical-distribution scalar priors. Cosmetic; the round-trip oracle tolerates it.
-- **Affine round-trip is lossy by design.** A non-centered (`offset`/`multiplier`) input reverses to a centered alist; re-running `stancode` produces the centered form, not the original affine declaration. Semantically equivalent, not byte-identical — documented, not a bug.
-- **`model`-block contract `for` loops are now supported.** `StanBlockParser.rewriteContractLoops` recognises the single shape the forward emitter produces — `for (i in 1:N) { lhs[i] = rhs; }` — and inverts it: it drops the `[i]` subscripts (the inverse of `renderLoopBody`, `a[idx[i]]` → `a[idx]`, `condition[i]` → `condition`) and rewrites the loop into the equivalent vectorised assignment before the `;`-splitter runs. **chimpanzees** (its `(bp + bpc*condition)*prosoc_left` `vector * vector` term emits a loop) now round-trips byte-identically. Off-contract loops — `while`, non-`1:N` bounds, nested or multi-statement bodies, stray braces — still **fail loud** (`StanBlockParseError.unsupportedLoop`). Full design in `Docs/LoopEmissionPlan.md`.
+- **Scope creep into general Stan.** Mitigated: fail-loud grammar; only the emitted-Stan subset is accepted.
+- **`c(a,b,c) ~ dnorm(...)` regrouping.** Cosmetic; separate priors lower to identical Stan; oracle unaffected.
+- **Affine round-trip is lossy by design.** `offset`/`multiplier` reverse to centred form; semantically equivalent, not byte-identical — documented, not a bug.
+- **Contract `for` loops.** `rewriteContractLoops` now handles both the single-assignment contract loop (chimpanzees) and the SUR two-statement loop. Off-contract loops still fail loud. Full design in `Docs/LoopEmissionPlan.md`.
+- **Multivariate distributions.** Implemented via M1–M6 (see `Docs/MultivariateReverseMappingPlan.md`). `AlistLexer '` (transpose) remains a deferred gap blocking the alist-text round-trip for Family A.

@@ -83,6 +83,15 @@ enum StanToUlamModel {
           indexColumnNames.insert(decl.name)
           columnByCardinality[upper] = decl.name
         }
+      case .matrix:
+        // Matrix data columns are tracked separately for multivariate
+        // likelihood recognition; they don't enter dataVectorNames.
+        break
+      case .arrayVector, .cholFactorCorr, .covMatrix:
+        // These types only appear in parameters, never in data — silently
+        // skip if encountered (defensive; the parser shouldn't produce them
+        // for data declarations in practice).
+        break
       case .other(let spec):
         throw StanToUlamError.unsupportedDeclaration("\(spec) \(decl.name)")
       }
@@ -90,22 +99,44 @@ enum StanToUlamModel {
 
     // MARK: Classify parameter declarations.
     var scalarParams: Set<String> = []
-    var vectorParamSize: [String: String] = [:]   // name → size symbol
+    var vectorParamSize: [String: String] = [:]           // name → size symbol
+    var cholFactorDim: [String: String] = [:]             // name → K
+    var arrayVectorShape: [String: (outer: String, length: String)] = [:]
+    var covMatrixDim: [String: String] = [:]              // name → dim
+    var matrixShape: [String: (rows: String, cols: String)] = [:]
+    // Data columns whose declaration type is matrix — used by role
+    // inference to distinguish a matrix data column (likelihood target)
+    // from a matrix parameter.
+    var matrixDataColumns: Set<String> = []
     for decl in program.parameterDecls {
       switch decl.type {
       case .real, .int:
         scalarParams.insert(decl.name)
       case .vector(let size):
         vectorParamSize[decl.name] = size
+      case .arrayVector(let outer, let length):
+        arrayVectorShape[decl.name] = (outer: outer, length: length)
+      case .cholFactorCorr(let dim):
+        cholFactorDim[decl.name] = dim
+      case .covMatrix(let dim):
+        covMatrixDim[decl.name] = dim
+      case .matrix(let rows, let cols):
+        matrixShape[decl.name] = (rows: rows, cols: cols)
       case .arrayInt, .arrayReal, .other:
         throw StanToUlamError.unsupportedDeclaration(decl.raw)
       }
+    }
+    for decl in program.dataDecls {
+      if case .matrix = decl.type { matrixDataColumns.insert(decl.name) }
     }
 
     // MARK: Walk the model block.
     var likelihoods: [Statement] = []
     var links: [Statement] = []
-    var priors: [Statement] = []
+    // Priors keyed by parameter name so we can re-order by declaration
+    // order after the model walk. Order matters: `parametersBlock` iterates
+    // `inferred.parameters` which follows statement list order.
+    var priorByName: [String: Statement] = [:]
 
     for stmt in program.modelStatements {
       switch stmt {
@@ -113,40 +144,114 @@ enum StanToUlamModel {
         links.append(reconstructAssignment(lhs: lhs, rhs: rhs))
 
       case let .sampling(lhs, distName, args, trunc):
+        // `to_vector(<matrix>)` LHS — matrix prior (iid via to_vector).
+        // Peel the function call and look up the matrix parameter.
+        let effectiveLhs: String
+        var toVectorMatrixName: String? = nil
+        if lhs.hasPrefix("to_vector("), lhs.hasSuffix(")") {
+          let inner = String(lhs.dropFirst("to_vector(".count).dropLast())
+            .trimmingCharacters(in: .whitespaces)
+          toVectorMatrixName = inner
+          effectiveLhs = inner
+        } else {
+          effectiveLhs = lhs
+        }
+
         let dist = try DistributionCatalog.distribution(fromStanName: distName, args: args)
         let truncation = toTruncation(trunc)
 
-        if dataVectorNames.contains(lhs) && !indexColumnNames.contains(lhs) {
-          likelihoods.append(.likelihood(lhs: lhs,
+        if let matName = toVectorMatrixName, let shape = matrixShape[matName] {
+          priorByName[matName] = .matrixPrior(name: matName,
+                                              rows: shape.rows,
+                                              cols: shape.cols,
+                                              distribution: dist,
+                                              truncation: truncation,
+                                              useLpdf: false)
+        } else if matrixDataColumns.contains(effectiveLhs) {
+          // Matrix data column → multivariate likelihood (SUR outcome).
+          likelihoods.append(.likelihood(lhs: effectiveLhs,
+                                          distribution: dist,
+                                          truncation: truncation,
+                                          useLpdf: false))
+        } else if dataVectorNames.contains(effectiveLhs)
+                    && !indexColumnNames.contains(effectiveLhs) {
+          likelihoods.append(.likelihood(lhs: effectiveLhs,
                                          distribution: dist,
                                          truncation: truncation,
                                          useLpdf: false))
-        } else if scalarParams.contains(lhs) {
-          priors.append(.prior(name: lhs,
-                               distribution: dist,
-                               truncation: truncation,
-                               constraints: .none,
-                               start: nil,
-                               useLpdf: false))
-        } else if let size = vectorParamSize[lhs] {
-          guard let indexColumn = columnByCardinality[size] else {
+        } else if scalarParams.contains(effectiveLhs) {
+          priorByName[effectiveLhs] = .prior(name: effectiveLhs,
+                                             distribution: dist,
+                                             truncation: truncation,
+                                             constraints: .none,
+                                             start: nil,
+                                             useLpdf: false)
+        } else if let dim = cholFactorDim[effectiveLhs] {
+          guard case let .lkjCorrCholesky(eta) = dist else {
             throw StanToUlamError.unsupportedModelStatement(
-              "vector parameter '\(lhs)' is not indexed by a known data column (plain vector priors are out of v1 scope)")
+              "cholesky_factor_corr parameter '\(effectiveLhs)' must be sampled from lkj_corr_cholesky")
           }
-          priors.append(.varyingPrior(name: lhs,
-                                      indexedBy: indexColumn,
-                                      countSymbol: nil,
-                                      distribution: dist,
-                                      truncation: truncation,
-                                      constraints: .none,
-                                      start: nil,
-                                      useLpdf: false,
-                                      nonCentered: false))
+          priorByName[effectiveLhs] = .lkjCorrCholeskyPrior(name: effectiveLhs, dim: dim, eta: eta)
+        } else if let dim = covMatrixDim[effectiveLhs] {
+          guard case let .wishart(nu, V) = dist else {
+            throw StanToUlamError.unsupportedModelStatement(
+              "cov_matrix parameter '\(effectiveLhs)' must be sampled from wishart")
+          }
+          priorByName[effectiveLhs] = .wishartPrior(name: effectiveLhs, dim: dim, nu: nu, V: V)
+        } else if let shape = arrayVectorShape[effectiveLhs] {
+          // `array[N_g] vector[K]` parameter — varying-vector prior.
+          // Pair with the index column whose cardinality matches `outer`.
+          guard let indexColumn = columnByCardinality[shape.outer] else {
+            throw StanToUlamError.unsupportedModelStatement(
+              "array-vector parameter '\(effectiveLhs)': no data column with upper=\(shape.outer) (ambiguous or missing index column)")
+          }
+          priorByName[effectiveLhs] = .varyingVectorPrior(name: effectiveLhs,
+                                                          indexedBy: indexColumn,
+                                                          length: shape.length,
+                                                          countSymbol: nil,
+                                                          distribution: dist,
+                                                          truncation: truncation,
+                                                          useLpdf: false)
+        } else if let size = vectorParamSize[effectiveLhs] {
+          if let indexColumn = columnByCardinality[size] {
+            priorByName[effectiveLhs] = .varyingPrior(name: effectiveLhs,
+                                                      indexedBy: indexColumn,
+                                                      countSymbol: nil,
+                                                      distribution: dist,
+                                                      truncation: truncation,
+                                                      constraints: .none,
+                                                      start: nil,
+                                                      useLpdf: false,
+                                                      nonCentered: false)
+          } else {
+            // Plain vector prior (e.g. sigma_ab — not indexed by a group column).
+            priorByName[effectiveLhs] = .vectorPrior(name: effectiveLhs,
+                                                     length: size,
+                                                     distribution: dist,
+                                                     truncation: truncation,
+                                                     useLpdf: false)
+          }
         } else {
           throw StanToUlamError.unsupportedModelStatement(
             "sampling target '\(lhs)' is neither a data outcome nor a declared parameter")
         }
       }
+    }
+
+    // Rebuild `priors` in parameter-declaration order so `parametersBlock`
+    // emits declarations in the same sequence the forward emitter uses.
+    // `cov_matrix` parameters have no sampling line — they are added here
+    // as declaration-only `.covMatrixPrior` entries for any name not yet
+    // in `priorByName`.
+    var priors: [Statement] = []
+    for decl in program.parameterDecls {
+      let name = decl.name
+      if let stmt = priorByName[name] {
+        priors.append(stmt)
+      } else if case let .covMatrix(dim) = decl.type {
+        priors.append(.covMatrixPrior(name: name, dim: dim))
+      }
+      // Other declaration-only types (if any) fall through silently.
     }
 
     guard !likelihoods.isEmpty else { throw StanToUlamError.noLikelihood }

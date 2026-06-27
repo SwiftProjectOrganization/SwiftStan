@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import ArgumentParser
 
 public func sample(model: String,
                    arguments: [String],

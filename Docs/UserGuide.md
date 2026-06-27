@@ -99,7 +99,7 @@ The repository will be downloaded and the project will open in Xcode.
 export CMDSTAN=/Users/rob/Projects/StanSupport/cmdstan/
 launchctl setenv CMDSTAN /Users/rob/Projects/StanSupport/cmdstan/
 
-alias swiftstan="/Users/rob/Library/Developer/Xcode/DerivedData/SwiftStan-*/Build/Products/Debug/SwiftStan"
+alias swiftstan="/Users/rob/Library/Developer/Xcode/DerivedData/SwiftStan-*/Build/Products/Debug/swiftstan"
 
 export STAN_CASES="/Users/rob/Documents/StanCases"
 launchctl setenv STAN_CASES /Users/rob/Documents/StanCases

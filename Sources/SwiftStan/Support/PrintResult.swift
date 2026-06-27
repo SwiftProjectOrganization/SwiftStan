@@ -16,12 +16,12 @@
 
 import Foundation
 
-func printResult(_ result: (String, String)) {
+public func printResult(_ result: (String, String)) {
   if !result.0.isEmpty { print(result.0) }
   if !result.1.isEmpty { print("Error: \(result.1)") }
 }
 
-func printFinalResult(_ result: (String, String)) {
+public func printFinalResult(_ result: (String, String)) {
   if !result.1.isEmpty {
     print("Error: \(result.1)")
     return

@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-SwiftStan is a Swift Package providing a macOS command-line tool (`swift-argument-parser`) that wraps Stan's [cmdstan](https://mc-stan.org/docs/2_37/cmdstan-guide/) toolchain, plus a Swift port of McElreath's R `ulam()` DSL. macOS only; Swift 6.2; single dependency (`swift-argument-parser ≥ 1.2.0`).
+SwiftStan is a Swift Package providing a macOS command-line tool (`swift-argument-parser`) that wraps Stan's [cmdstan](https://mc-stan.org/docs/2_37/cmdstan-guide/) toolchain, plus a Swift port of McElreath's R `ulam()` DSL. macOS 14+; Swift 6.2; single dependency (`swift-argument-parser ≥ 1.2.0`). The package exposes two products: a `SwiftStan` library (all orchestration + Ulam logic) and a `swiftstan` executable (the thin ArgumentParser CLI in `Sources/swiftstan-cli/`).
 
 The functionality can be used:
 
 1. In Xcode: edit the scheme's "Arguments passed on launch", build-and-run, and watch the console.
-2. From a shell (the intended way) via an alias `swiftstan` to `~/Library/Developer/Xcode/DerivedData/SwiftStan_*/Build/Products/Debug/SwiftStan`, or `swift run SwiftStan <subcommand>`.
+2. From a shell (the intended way) via an alias `swiftstan` to `~/Library/Developer/Xcode/DerivedData/SwiftStan_*/Build/Products/Debug/swiftstan`, or `swift run swiftstan <subcommand>`.
 
 ## Build & test commands
 
@@ -47,11 +47,11 @@ Required environment variable: `CMDSTAN` pointing to the cmdstan directory. `STA
 
 Each subcommand has the same three layers; navigate them in this order when changing behaviour:
 
-1. **`Sources/SwiftStan/SwiftStan.swift`** — `@main struct SwiftStan: ParsableCommand` plus nested `extension SwiftStan { struct <Sub>: ParsableCommand }` types. Three shared `ParsableArguments` groups (`OptionsCompile`, `OptionsSample`, `OptionsLimited`) carry the flags/options. Each subcommand's `run()` reads `CMDSTAN`, resolves the path, and forwards to a top-level Swift function.
+1. **`Sources/swiftstan-cli/SwiftStan.swift`** — `@main struct SwiftStan: ParsableCommand` plus nested `extension SwiftStan { struct <Sub>: ParsableCommand }` types. Three shared `ParsableArguments` groups (`OptionsCompile`, `OptionsSample`, `OptionsLimited`) carry the flags/options. Each subcommand's `run()` reads `CMDSTAN`, resolves the path, and forwards to a top-level Swift function. `import SwiftStan` at the top imports the library module.
 2. **`Sources/SwiftStan/Commands/*.swift`** — orchestration: resolve `casePaths(for: model)`, optionally install bootstrap files (`-I`), call the Methods layer (or shell out via `Process`), then post-process via Support.
 3. **`Sources/SwiftStan/Methods/*.swift`** — thin wrappers (`stanCompile`, `stanSample`, `stanOptimize`, `stanPathfinder`, `stanSummary`) that build an argv and shell out via `swiftSyncFileExec`. Note: `stanSummary` lives in `Methods/RunStanSummary.swift` (not `StanSummary.swift`) to avoid an APFS case-insensitive `.o` collision with `Commands/Stansummary.swift`.
 
-`SwiftStan.swift` repeats the `CMDSTAN`-resolution block in every `run()` rather than centralising it; if the fallback path needs to change, update all of them.
+`swiftstan-cli/SwiftStan.swift` repeats the `CMDSTAN`-resolution block in every `run()` rather than centralising it; if the fallback path needs to change, update all of them.
 
 ### `(String, String)` return convention
 
@@ -96,7 +96,7 @@ The raw/clean split is load-bearing for `laplace`: cmdstan needs `<name>_optimiz
 
 ### Subcommands
 
-Defined in `SwiftStan.swift`:
+Defined in `Sources/swiftstan-cli/SwiftStan.swift`:
 
 - `compile` — uses `OptionsCompile` (`-V`, `-I`, `--cmdstan`, `--model`, trailing `values` passed through to make).
 - `sample` — uses `OptionsSample` (adds `-S/--nosummary`). Defaults `num_chains=4 num_samples=1000` when no trailing args are passed. Always calls `getSampleResult` to produce the clean samples file, and by default also runs `stanSummary` + `extractStanSummary`.
@@ -126,6 +126,7 @@ Sub-packages:
 - `Alist/` — R `alist()` parser → two downstream targets. `AlistAST.swift` + `AlistLexer.swift` (R tokens incl. `~`, `<-`, `#` comments; `'` (apostrophe / postfix transpose) is tokenised as `.prime` rather than throwing) + `AlistParser.swift` (outer-wrap stripping for `m12.5 <- map2stan(alist(...), ...)`, comma-split statements, reuses `ExpressionParser`; `parseBracketVectorArg` accepts `[id1, id2, …]'` bracket-vector dist args, equivalent to `c(a, b)` — both produce the `[id1, id2, …]'` Stan row-vector literal; `sim(d*(...))` RHS detected and lowered to `AlistStatement.generatedQuantity`). `AlistLowering.swift` maps R `d*` names to `Distribution` cases, expands `c(a, b, c) ~ ...` group priors, collapses `dbinom(1, p)` → `.bernoulli(p:)`; the indexed-LHS correlated-effects shape `ab[cafe] ~ dmvnorm2(c(a_bar, b_bar), sigma_ab, L_Omega)` (and the `dmvnormchol` arg-order variant) is lowered via `lowerPackedIndexed` which packs `diag_pre_multiply(sigma, L)` as the Cholesky arg, routing to `.multivariateNormalCholesky` over a `VaryingVectorPrior`. `AlistClassify.swift` assigns identifier roles using McElreath's "first `~` is the likelihood" convention and infers `lower: 0` truncation for scale-slot scalar parameters. Two emitters: `AlistEmitter.swift` renders a runnable `@main` Swift smoke driver (input for `dsl2stan`); `AlistToUlamModel.swift` builds an in-memory `UlamModel` (input for `stancode`).
 - `Stan2Alist/` — the reverse pipeline (`stan2alist`). `StanProgram.swift` (value types + `StanBlockParseError`; `StanType` covers `real`, `int`, `vector`, `arrayInt`, `arrayReal`, `arrayVector`, `matrix`, `covMatrix`, `cholFactorCorr`; `gqStatements` collects `generated quantities` block entries) + `StanBlockParser.swift` (brace-depth block splitter, comment stripper, declaration + sampling/assignment parsers; `rewriteContractLoops` inverts forward loop emission — single-assignment contract loop and SUR two-statement loop — before the `;`-splitter; skips model-block local declarations; parses `generated quantities` into `gqStatements` (`<dist>_rng(...)` → `Statement.generatedQuantity`); records `transformed *` as `droppedBlocks`; fails loud on unrecognised blocks/statements and off-contract loops). `StanToUlamModel.swift` reconstructs `[Statement]` (role inference off block structure: scalar, vector/varying, plain vector, chol-factor, cov-matrix, array-vector, matrix parameter kinds; drops declaration constraints + affine non-centering; surfaces dropped blocks as warnings; rebuilds priors in parameter-declaration order). `AlistTextEmitter.swift` renders `[Statement]` as McElreath `alist()` text (reuses `DistributionCatalog.args(_:)`; covers all univariate + multivariate statement types; `generatedQuantity` → `<name> <- sim(d*(<args>))`; `.varyingVectorPrior` carrying `.multivariateNormalCholesky` is emitted as `name[idx] ~ dmvnorm2(c(names), sigma, L)` by decomposing the stored `diag_pre_multiply(sigma, L)` Cholesky arg — no `'` character in output so the text re-parses cleanly).
 - `Ulam.swift` — two orchestrators. `ulam(_ model: UlamModel, name:cmdstan:verbose:arguments:)` is the V1 in-process path used by the demo tests. `ulamPipeline(model: String, cmdstan:verbose:arguments:)` is the V2.1 file-based path the CLI uses — chains `stancode`-or-`dsl2stan` → `csv2json` → `compile` → `sample` with make-style staleness checks per step.
+- `UlamDemos.swift` — `enum Ulam` with eight static factory methods (`bernoulliDemo()`, `poissonDemo()`, `ucbDemo()`, `dmvnormDemo()`, `binomialDemo()`, `varyingSlopesDemo()`, `cafeDemo()`, `reedfrogDemo()`). Tests reference these as `SwiftStan.Ulam.bernoulliDemo()` etc. (module-qualified) via `@testable import SwiftStan`. Previously nested inside the CLI's `struct Ulam: ParsableCommand`; moved here so the library module owns them without importing the executable.
 
 Two `stancode` entry points exist on the Swift API: `stancode(_ model: UlamModel) throws -> String` (pure) and `stancode(model: String, verbose: Bool) throws -> URL` (file-based). The `model:` label disambiguates.
 
@@ -176,6 +177,12 @@ Fixture-staging pattern:
 3. If the test also needs derived artifacts (a compiled binary, a generated `.stan`), bootstrap them after staging: call `stancode(model:)` / `stanCompile(...)` / `createDotStanModelFile(model:)` / `createDotJsonDataFile(model:)` directly. `LaplaceTests.bernoulliLaplaceProducesOutputCsv` is the canonical example.
 4. Keep the `#require(fileExists:)` checks downstream of staging — they then act as belt-and-braces for the staging itself.
 
+### SwiftStanApp (AppIntents component)
+
+A non-sandboxed macOS app at `~/Projects/Swift/SwiftStanApp/` links the `SwiftStan` library product and exposes five subcommands (compile, sample, ulam, stancode, stan2alist) as App Intents invocable from Shortcuts / Siri / Spotlight. The intents run in-process inside the app (no AppIntents extension) because the library shells out via `Foundation.Process` to cmdstan — which sandbox forbids. `SwiftStanShortcuts.updateAppShortcutParameters()` is called in `SwiftStanAppApp.init()` to register shortcuts with macOS on every launch. The app stores the cmdstan path in `UserDefaults` (key `"cmdstanPath"`), falling back to `$CMDSTAN` then the hardcoded default path.
+
+The app is Developer-ID / direct-distribution only (not App Store) due to the sandbox requirement.
+
 ### Sibling project
 
 [SwiftStats](https://github.com/SwiftProjectOrganization/SwiftStats) consumes the clean `*.samples.csv` / `*.stansummary.csv` files this CLI produces. The `~/Documents/<STAN_CASES>/<name>/Results/` layout is the contract between the two — don't rename output files without updating both.
@@ -189,9 +196,9 @@ Fixture-staging pattern:
 
 ## Key constraints
 
-- macOS only (`Process`, `/usr/bin/make`, `~/Documents`-rooted paths, `FileManager.urls(for: .documentDirectory, in: .userDomainMask)`).
+- macOS 14+ (`Process`, `/usr/bin/make`, `~/Documents`-rooted paths, `FileManager.urls(for: .documentDirectory, in: .userDomainMask)`).
 - Swift 6.2+ toolchain (`Package.swift` declares `swift-tools-version: 6.2`).
-- Single dependency: `swift-argument-parser` ≥ 1.2.0. Do not pull in additional packages without a clear reason — the CLI's value proposition is "thin wrapper".
+- Single dependency: `swift-argument-parser` ≥ 1.2.0 (on the `swiftstan-cli` target only; the `SwiftStan` library target has no external dependencies). Do not pull in additional packages without a clear reason — the CLI's value proposition is "thin wrapper".
 - Prefer `async`/`await` over Combine for any new asynchronous code. The current shell-out path is intentionally synchronous (`Process.run()` + read-to-EOF) because the CLI is short-lived; if you make it async, propagate that everywhere rather than mixing styles.
 
 ## Code style

@@ -32,8 +32,14 @@ public func caseRoot() -> URL {
   if let override = caseRootOverride { return override }
   if let env = ProcessInfo.processInfo.environment["STAN_CASES"],
      !env.isEmpty {
-    return URL(fileURLWithPath: (env as NSString).expandingTildeInPath,
-               isDirectory: true)
+    let expanded = (env as NSString).expandingTildeInPath
+    if expanded.hasPrefix("/") {
+      return URL(fileURLWithPath: expanded, isDirectory: true)
+    }
+    // Bare name ("StanCases") or relative subpath ("SR/v2") — resolve under ~/Documents/
+    let documents = FileManager.default
+      .urls(for: .documentDirectory, in: .userDomainMask)[0]
+    return documents.appendingPathComponent(expanded, isDirectory: true)
   }
   let documents = FileManager.default
     .urls(for: .documentDirectory, in: .userDomainMask)[0]

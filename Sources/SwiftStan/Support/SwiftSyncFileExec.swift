@@ -11,11 +11,16 @@ import Foundation
 func swiftSyncFileExec(program: String,
                        arguments: [String],
                        method: String = "sample",
+                       environment: [String: String]? = nil,
                        logsDir: URL? = nil,
                        logsBase: String? = nil) -> (String, String) {
   let process = Process()
   process.executableURL = URL(fileURLWithPath: program)
   process.arguments = arguments
+  // When nil, the child inherits this process's environment. Callers
+  // that need a specific variable (e.g. the cmdstan compile pinning
+  // MACOSX_DEPLOYMENT_TARGET) pass a full, already-merged environment.
+  if let environment { process.environment = environment }
 
   let outputPipe = Pipe()
   let errorPipe = Pipe()

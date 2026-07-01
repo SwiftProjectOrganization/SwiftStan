@@ -39,11 +39,11 @@ This project is work in progress!!! Work completed or still to be done can be fo
 | ------------ | -------------------------------------- |
 | Command      | Effect                                 |
 | ------------ | -------------------------------------- |
-| ulam         | Run the ulam pipeline end-to-end                       |
-| stancode     | alist -> .stan (sim() lines emit generated quantities) |
-| stan2alist   | .stan -> alist (inverse of stancode)                   |
-| alist2dsl    | alist -> smoke driver                                  |
-| dsl2stan     | smoke driver -> .stan (swiftc)                         |
+| ulam         | Run the ulam pipeline end-to-end       |
+| stancode     | alist -> .stan                         |
+| stan2alist   | .stan -> alist (inverse of stancode)   |
+| alist2dsl    | alist -> smoke driver                  |
+| dsl2stan     | smoke driver -> .stan (swiftc)         |
 | ------------ | -------------------------------------- |
 ```
 **Notes**
@@ -109,8 +109,7 @@ Make sure "swiftstan" points to the most recent version of SwiftStan in "../Xcod
 
 Environment variables used by the pipeline:
 
-  - `CMDSTAN` — location of the cmdstan installation (required for `compile`/`sample`).
-  - `STAN_CASES` — case-root directory name under `~/Documents/` (optional; overrides the persisted `stancases` preference when set).
+  - `CMDSTAN` — location of the cmdstan installation (required for `compile`/`sample`).`
   - `SWIFTSTAN_PROJECT_ROOT` — location of the SwiftStan source checkout, used by the DSL pipeline's `dsl2stan` to compile a "smoke driver". It defaults to `/Users/rob/Projects/Swift/SwiftStan` and `dsl2stan` prints a notice that the default is being used.
 
 ### 3. Testing SwiftStan
@@ -134,7 +133,7 @@ The above commands can also be run from within Xcode by specifying input argumen
  
 All pipeline commands operate on a set of files stored in the directory `"~/Documents/<STAN_CASES>/<name>/..."`. Here <name> is the name of a model, e.g. bernoulli or chimpanzees.
 
-The case-root directory defaults to `'StanCases'`. Use `swiftstan stancases <name>` to set a different root (persisted across invocations). The `STAN_CASES` environment variable overrides this if set.
+The case-root directory defaults to `'StanCases'`. Use `swiftstan stancases <name>` to set a different root (persisted across invocations). 
 
 The cmdstan pipeline only uses files in `"~/Documents/<STAN_CASES>/name>/Results"`. All cmdstan output files also end up in Results.
 
@@ -184,11 +183,12 @@ Examples/<name>/
 To follow an example in a manual, copy the case directory into your `~/Documents/<STAN_CASES>/` root and run the pipeline against it. For example:
 
 ```bash
-cp -R Examples/howell_m4_4 ~/Documents/StanCases/
+cp -R Examples/SR2Cases/howell_m4_4 ~/Documents/SR2Cases/
+swiftstan stancases SR2Cases
 swiftstan ulam --model howell_m4_4
 ```
 
-The cases are in the `Examples/<name>/` directories of the repository.
+The cases are in the `Examples/StanCases/<name>/` and `Examples/SR2Cases/<name>/` directories of the repository.
 
 Each `Results/` ships mostly empty (it carries only a `.gitkeep` placeholder); the pipeline populates it on the first run. The exception is `radon_pp_template`, whose `Results/` ships the hand-written `.stan` that `stan2alist` reads.
 

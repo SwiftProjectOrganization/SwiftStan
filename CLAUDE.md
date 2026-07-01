@@ -11,6 +11,14 @@ The functionality can be used:
 1. In Xcode: edit the scheme's "Arguments passed on launch", build-and-run, and watch the console.
 2. From a shell (the intended way) via an alias `swiftstan` to `~/Library/Developer/Xcode/DerivedData/SwiftStan_*/Build/Products/Debug/swiftstan`, or `swift run swiftstan <subcommand>`.
 
+### Related projects (important)
+
+There are four SwiftStan-family projects, but **this repository (`SwiftStan`) is standalone and shares no code with the other three.** It is a self-contained Swift Package (the `SwiftStan` library + `swiftstan` CLI, single dependency `swift-argument-parser`).
+
+The other three — **`SwiftStanLibrary`**, **`SwiftStanServer`**, and **`SwiftStanApp`** — are a separate, closely-related cluster: `SwiftStanServer` (a Hummingbird HTTP server) links the distributable `SwiftStanLibrary` package and runs cmdstan, while `SwiftStanApp` is a thin OpenAPI/HTTP client to that server. They evolve together and are **not** dependencies of, nor depended on by, this repo.
+
+Do not assume changes here propagate to (or come from) that trio, and vice versa. `Docs/SwiftStanLibrary-Adoption-Plan.md` and `Docs/SwiftStanServer-Plan.md` describe *planned* relationships that are not yet wired into this repo's `Package.swift`.
+
 ## Build & test commands
 
 ```bash

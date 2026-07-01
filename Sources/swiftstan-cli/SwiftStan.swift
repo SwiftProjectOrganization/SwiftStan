@@ -23,7 +23,7 @@ struct SwiftStan: ParsableCommand {
     // Pass an array to `subcommands` to set up a nested tree of subcommands.
     // With language support for type-level introspection, this could be
     // provided by automatically finding nested `ParsableCommand` types.
-    subcommands: [Compile.self, Sample.self, Optimize.self, Pathfinder.self, Laplace.self, Generated_Quantities.self, Stansummary.self, Csv2Json.self, Dsl2Stan.self, Alist2Dsl.self, Stancode.self, Stan2Alist.self, Runinfo.self, Ulam.self, Test.self],
+    subcommands: [Compile.self, Sample.self, Optimize.self, Pathfinder.self, Laplace.self, Generated_Quantities.self, Stansummary.self, Csv2Json.self, Dsl2Stan.self, Alist2Dsl.self, Stancode.self, Stan2Alist.self, Runinfo.self, Stancases.self, Ulam.self, Test.self],
     
     // A default subcommand, when provided, is automatically selected if a
     // subcommand is not given on the command line.
@@ -441,6 +441,32 @@ extension SwiftStan {
         printFinalResult(("Wrote \(url.path)", ""))
       } catch {
         printFinalResult(("", "\(error)"))
+      }
+    }
+  }
+}
+
+extension SwiftStan {
+  struct Stancases: ParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "stancases",
+      abstract: "Print the persisted case-root name, or set it (e.g. `swiftstan stancases SR2Cases`).")
+
+    @Argument(
+      help: "New case-root name to persist (e.g. SR2Cases). Omit to print the current value; pass \"\" to clear back to the StanCases default."
+    )
+    var name: String?
+
+    mutating func run() {
+      guard let name else {
+        printFinalResult(("stanCases = \"\(stanCases())\"", ""))
+        return
+      }
+      setStanCases(name)
+      if name.isEmpty {
+        printFinalResult(("Cleared stanCases preference; reverting to default \"\(stanCases())\".", ""))
+      } else {
+        printFinalResult(("Set stanCases to \"\(stanCases())\".", ""))
       }
     }
   }

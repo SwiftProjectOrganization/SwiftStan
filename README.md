@@ -1,21 +1,38 @@
-# SwiftStan
+# SwiftStan CLI
+## Purpose
 
-1. A macOS / Xcode / Swift CLI wrapping Stan's [cmdstan](https://mc-stan.org/docs/2_37/cmdstan-guide/).
+1. A macOS / Xcode / Swift CLI (Command Line Interface) wrapping Stan's [cmdstan](https://mc-stan.org/docs/2_37/cmdstan-guide/).
 
 2. An experimental port of [McElreath](https://www.routledge.com/Statistical-Rethinking-A-Bayesian-Course-with-Examples-in-R-and-STAN/McElreath/p/book/9780367139919)'s R implementation ulam() in [rethinking](https://github.com/rmcelreath/rethinking) to Swift.
 
 3. As an "experiment within an experiment", and for me to further my understanding of the mapping back-and-forth between alternate ways of expressing Stan Language Programs, I asked Claude to plan and implement a reverse mapping from a .stan file to an .alist.r file. See sections 2.2 and 5.2 in Docs/UlamManual.md.
 
+## Other SwiftStan CLI related repositories in the '*SwiftStan suite*'
+
+This package, the CLI component of the "SwiftStan suite", in addition to the above 3 capabilities, also includes a second ulam pipeline implementation using an intermediate DSL that requires `swiftc`.
+
+Other components is the SwiftStan suite are: 
+
+1. [SwiftStanApp](https://github.com/SwiftProjectOrganization/SwiftStanApp): A thin HTTP client of:
+2. [SwiftStanServer](https://github.com/SwiftProjectOrganization/SwiftStanServer), an OpenAPI server that uses the
+3. [SwiftStanLibrary](https://github.com/SwiftProjectOrganization/SwiftStanLibrary) to execute cmdstan commands.
+
+The SwiftStanLibrary is derived from the [SwiftStan](https://github.com/SwiftProjectOrganization/SwiftStan) CLI.
+
+As swiftc is not available on iOS platforms that functionality was dropped from the SwiftStanLibrary package and consequently from SwiftStanServer and SwiftStanApp. The SwiftStanLibrary is available as a SPM package on Github.
+
+## Documentation
+
 Documentation lives in [`Docs/`](Docs/):
 
 - [`Docs/UserGuide.md`](Docs/UserGuide.md) — Overview, supported functionality, setup and usage.
 - [`Docs/UlamManual.md`](Docs/UlamManual.md) — Ulam pipeline manual (`stancode` → `csv2json` → `CMDSTAN`).
-- [`Docs/DSLManual.md`](Docs/DSLManual.md) — Swift+DSL pipeline (`alist2dsl` → `dsl2stan` → `csv2json` → `CMDSTAN`).
+- [`Docs/DSLManual.md`](Docs/DSLManual.md) — Swiftc+DSL pipeline (`alist2dsl` → `dsl2stan` → `csv2json` → `CMDSTAN`).
 - [`Docs/TODO.md`](Docs/TODO.md) — Future work items.
 - [`CLAUDE.md`](CLAUDE.md) — Guidance for Claude.
 
 As the last item indicates, the ulam port is being worked on using Claude.
----
+
 ---
 
 # Example cases

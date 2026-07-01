@@ -13,8 +13,12 @@ Other components is the SwiftStan suite are:
 1. [SwiftStanApp](https://github.com/SwiftProjectOrganization/SwiftStanApp): A thin HTTP client of:
 2. [SwiftStanServer](https://github.com/SwiftProjectOrganization/SwiftStanServer), an OpenAPI server that uses the
 3. [SwiftStanLibrary](https://github.com/SwiftProjectOrganization/SwiftStanLibrary) to execute cmdstan commands.
+
 The SwiftStanLibrary is derived from the [SwiftStan](https://github.com/SwiftProjectOrganization/SwiftStan) CLI.
-SwiftStan CLIprovides, in addition to the above 3 capabilities, also a second ulam pipeline implementation using an intermediate DSL that requires `swiftc`. As swiftc is not available on iOS platforms that functionality was dropped from the SwiftStanLibrary package and consequently from SwiftStanServer and SwiftStanApp. The SwiftStanLibrary is available as a SPM package on Github.
+
+SwiftStan CLI provides a second ulam pipeline implementation using an intermediate DSL that requires `swiftc`. As swiftc is not available on iOS platforms that functionality was dropped from the SwiftStanLibrary package and consequently from SwiftStanServer and SwiftStanApp.
+
+The SwiftStanLibrary is available as a SPM package on Github.
 
 ## Documentation[](Docs/)
 

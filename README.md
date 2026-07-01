@@ -42,12 +42,21 @@ Examples/<name>/
 └── Results/           empty — the pipeline writes its output here
 ```
 
-Once SwiftStan has been installed (**see UserGuide.md**), to run the examples, copy the contents of the Examples directory into your `~/Documents/<STAN_CASES>/` root and run the pipeline against it. For example:
+Once SwiftStan has been installed (**see UserGuide.md**), to run the examples, copy the contents of the Examples directory into your `~/Documents` root and run the pipeline against it. For example:
 
 ```bash
 cd ~/Project/Swift/SwiftStan # Your path to SwiftStan
-cp -Rf Examples/* ~/Documents/StanCases/ # Your <Stan_Cases> environment variable
+cp -Rf Examples/* ~/Documents # copies StanCases/ and SR2Cases/ into ~/Documents
+
+# StanCases examples (default case root):
+swiftstan ulam --model howell
+
+# SR2Cases examples — switch case root persistently, then run:
+swiftstan stancases SR2Cases
 swiftstan ulam --model howell_m4_4
+
+# Switch back to the default:
+swiftstan stancases ""
 
 ```
 ---

@@ -19,7 +19,7 @@ swiftstan ulam --model <name>
 ```
 alist2dsl → dsl2stan (swiftc based) → compile → sample
 ```
-The DSL/swiftc workflow is described in the DSLManula.md.
+The DSL/swiftc workflow is described in the DSLManual.md.
 
 3. **Posterior-predictive workflow**:
 ```
@@ -228,6 +228,7 @@ priors on `alpha`, `beta`, and `sigma`.
 Generate the Stan source:
 
 ```bash
+swiftstan stancases StanCases
 swiftstan stancode --model radon
 ```
 
@@ -528,6 +529,7 @@ The first line is the likelihood (`y`); the second is a uniform prior on `theta`
 Generate the Stan source:
 
 ```bash
+swiftstan stancases StanCases
 swiftstan stancode --model bernoulli_1
 ```
 
@@ -2203,23 +2205,8 @@ be compared against the observed `log_radon` values for a posterior predictive c
 
 ## 6. Future work
 
-The pipeline and this manual are still growing. Planned additions:
+SwiftStan is under active development. See CLAUDE.md and TODO.md for updates.
 
-- **Non-centred parameterisation** for correlated/hierarchical models. The café model
-  (§5.1) is emitted in the centred form, whose funnel geometry samples imperfectly;
-  a non-centred reparameterisation (offset + scaled `z`) would converge cleanly.
-- **More advanced worked examples** — Gaussian processes, ordered-logit / monotonic
-  effects, and Wishart covariance priors. The DSL constructs exist; they aren't yet
-  documented end-to-end here.
-- **Crossed random effects with distinct group cardinalities.** The current port
-  shares a single vector-length symbol (`J`); models with several independent grouping
-  dimensions need per-group symbols.
-- **Indexed bare-LHS deterministics** (`mu[i] <- …`). Today only plain-identifier
-  deterministic targets are rewritten; an explicitly indexed target would need its own
-  loop-body emitter.
-- **Staleness-aware `compile`.** `compile` currently skips when a binary exists; it
-  does not yet recompile when the `.stan` is newer than the binary (regenerate by
-  removing the binary, or via the `ulam` pipeline's `isStale` checks).
 
 ---
 

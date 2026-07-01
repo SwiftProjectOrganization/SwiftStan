@@ -7,7 +7,6 @@
 2. Hosting a port of [McElreath](https://www.routledge.com/Statistical-Rethinking-A-Bayesian-Course-with-Examples-in-R-and-STAN/McElreath/p/book/9780367139919)'s R implementation ulam() in [rethinking](https://github.com/rmcelreath/rethinking) to Swift.
 
 This project is work in progress!!! Work completed or still to be done can be found in [TODO](https://github.com/SwiftProjectOrganization/Stan/blob/main/Docs/TODO.md). Some additional technical details can be found in [CLAUDE](https://github.com/SwiftProjectOrganization/Stan/blob/main/CLAUDE.md). Lots of testing and more examples are needed for the ulam pipeline.
----
 
 
 ## Supported functionality  
@@ -15,16 +14,16 @@ This project is work in progress!!! Work completed or still to be done can be fo
 ### Cmdstan pipeline related commands 
 
 ```gfm
-| ------------ | ------------------------------------------ |
-| Command      | Effect                                     |
-| ------------ | ------------------------------------------ |
+| -------------------- | --------------------------=------------------------------ |
+| Command              | Effect                                                    |
+| -------------------- | --------------------------------------------------------- |
 | compile              | Compile a Stan model                                      |
 | sample               | Sample from a compiled model                              |
 | stansummary          | Stansummary on a sampled model                            |
 | optimize             | Optimize a compiled model                                 |
 | pathfinder           | Pathfinder on a compiled model                            |
 | laplace              | Laplace on a compiled model                               |
-| generated_quantities  | Run generate_quantities on existing draws (see note 2)    |
+| generated_quantities | Run generate_quantities on existing draws (see note 2)    |
 | runinfo              | See note 1                                                |
 | -------------------- | --------------------------------------------------------- |
 ```
@@ -60,7 +59,8 @@ This project is work in progress!!! Work completed or still to be done can be fo
 | ------------ | -------------------------------------- |
 | Command      | Effect                                 |
 | ------------ | -------------------------------------- |
-| csv2json     | "<name>.csv" -> "<name>.json"            |
+| csv2json     | "<name>.csv" -> "<name>.json"          |
+| stancases    | Show or update the cases subdirectory  |
 | ------------ | -------------------------------------- |
 ```
 
@@ -92,7 +92,7 @@ The repository will be downloaded and the project will open in Xcode.
       
   2. `'build and run'` the project.
       
-  3. Expand your CMDSTAN definition in your .zshrc with an `'alias'` and two more environment variables, `'STAN_CASES'` and `'SWIFTSTAN_PROJECT_ROOT'`:
+  3. Expand your CMDSTAN definition in your .zshrc with an `'alias'` and the `'SWIFTSTAN_PROJECT_ROOT'` environment variable:
   
 ```.zshrc
 
@@ -101,19 +101,16 @@ launchctl setenv CMDSTAN /Users/rob/Projects/StanSupport/cmdstan/
 
 alias swiftstan="/Users/rob/Library/Developer/Xcode/DerivedData/SwiftStan-*/Build/Products/Debug/swiftstan"
 
-export STAN_CASES="/Users/rob/Documents/StanCases"
-launchctl setenv STAN_CASES /Users/rob/Documents/StanCases
-
 export SWIFTSTAN_PROJECT_ROOT="/Users/rob/Projects/Swift/SwiftStan"
 launchctl setenv SWIFTSTAN_PROJECT_ROOT /Users/rob/Projects/Swift/SwiftStan
 ```
 
-Make sure "SwiftStan-*" points to the most recent version of SwiftStan in "../Xcode/DerivedData"
+Make sure "swiftstan" points to the most recent version of SwiftStan in "../Xcode/DerivedData"
 
 Environment variables used by the pipeline:
 
   - `CMDSTAN` — location of the cmdstan installation (required for `compile`/`sample`).
-  - `STAN_CASES` — case-root directory name under `~/Documents/`; defaults to `StanCases`.
+  - `STAN_CASES` — case-root directory name under `~/Documents/` (optional; overrides the persisted `stancases` preference when set).
   - `SWIFTSTAN_PROJECT_ROOT` — location of the SwiftStan source checkout, used by the DSL pipeline's `dsl2stan` to compile a "smoke driver". It defaults to `/Users/rob/Projects/Swift/SwiftStan` and `dsl2stan` prints a notice that the default is being used.
 
 ### 3. Testing SwiftStan
@@ -129,7 +126,7 @@ To run individual tests, use for example `swift test --filter "chimpanzeesHappyP
 
 ## Working environment  
 
-After the initial build, the intended usage is to run the commands from a shell. This requires the exported alias in a shell as setup above. It's not always necessary, but advisable, to run `swifstan ...` from the SwiftStan directory.
+After the initial build, the intended usage is to run the commands from a shell. This requires the exported alias in a shell as setup above. It's not always necessary, but advisable, to run `swiftstan ...` from the SwiftStan directory.
 
 The above commands can also be run from within Xcode by specifying input arguments before hitting the `'build and run'` button. See below "Usage from within Xcode".  
 
@@ -137,7 +134,7 @@ The above commands can also be run from within Xcode by specifying input argumen
  
 All pipeline commands operate on a set of files stored in the directory `"~/Documents/<STAN_CASES>/<name>/..."`. Here <name> is the name of a model, e.g. bernoulli or chimpanzees.
 
-The <STAN_CASES> enviroment variable specifies the actual location, by default this is `'StanCases'`. 
+The case-root directory defaults to `'StanCases'`. Use `swiftstan stancases <name>` to set a different root (persisted across invocations). The `STAN_CASES` environment variable overrides this if set.
 
 The cmdstan pipeline only uses files in `"~/Documents/<STAN_CASES>/name>/Results"`. All cmdstan output files also end up in Results.
 
@@ -184,17 +181,16 @@ Examples/<name>/
 └── Results/           empty — the pipeline writes its output here
 ```
 
-To follow a manual, copy the case directory into your `~/Documents/<STAN_CASES>/` root and run the pipeline against it. For example:
+To follow an example in a manual, copy the case directory into your `~/Documents/<STAN_CASES>/` root and run the pipeline against it. For example:
 
 ```bash
-cp -R Examples/howell ~/Documents/StanCases/
+cp -R Examples/howell_m4_4 ~/Documents/StanCases/
 swiftstan ulam --model howell_m4_4
-
 ```
 
-The cases routed through the in-process [`UlamManual.md`](UlamManual.md) (`stancode` path) are `radon`, `bernoulli_1`, `binomial`, `howell`, `radon_np`, `chimpanzees`, `ucb`, `cafe`, and `radon_pp`. The cases routed through the [`DSLManual.md`](DSLManual.md) (`alist2dsl` → `dsl2stan` path) are `radon_dsl`, `radon_np_dsl`, `chimpanzees_dsl`, and `cafe_dsl`. The `radon_pp_template` case demonstrates the reverse `stan2alist` path (§5.2.6): it ships a hand-written `Results/radon_pp_template.stan` (and its `.csv`) but no `.alist.R`.
+The cases are in the `Examples/<name>/` directories of the repository.
 
-Each `Results/` ships empty (it carries only a `.gitkeep` placeholder); the pipeline populates it on the first run. The exception is `radon_pp_template`, whose `Results/` ships the hand-written `.stan` that `stan2alist` reads.
+Each `Results/` ships mostly empty (it carries only a `.gitkeep` placeholder); the pipeline populates it on the first run. The exception is `radon_pp_template`, whose `Results/` ships the hand-written `.stan` that `stan2alist` reads.
 
 
 ## Usage  
@@ -206,7 +202,7 @@ The package can be used from the CLI (Terminal) or from within Xcode.
 Help is available with `'swiftstan -h'` or `'swiftstan compile -h'`.
 
 ```.zshrc
-rob@Rob-Travel-M5 ~ % stan -h
+rob@Rob-Travel-M5 ~ % swiftstan -h
 OVERVIEW: A wrapper for running cmdstan.
 
 USAGE: swiftstan <subcommand>
@@ -229,6 +225,7 @@ SUBCOMMANDS:
   stan2alist                Reverse-translate Results/<name>.stan into Preliminaries/<name>.alist.R (inverse of stancode).
   runinfo                   Clean Results/<name>.config.json in place (basenames, sorted keys).
   ulam                      Run one of the built-in ulam DSL demos (--model Bernoulli|Poisson|Binomial|UCB|Dmvnorm).
+  stancases                 Show or set the <Stan_Cases> directory, `swiftstan stancases SR2Cases`.
   test (default)            Test the CLI functions.
 
   See 'swiftstan help <subcommand>' for detailed help.
@@ -238,11 +235,11 @@ rob@Rob-Travel-M5 ~ %
 If the appropriate files are present, a typical Terminal session could continue with:
 
 1. `'swiftstan compile --model bernoulli'`
-2. `'swiftstan sample --mode lbernoulli'`
+2. `'swiftstan sample --model bernoulli'`
 
 or
 
-3. `'swiftstan ulam --mode lchimpanzees'`
+3. `'swiftstan ulam --model chimpanzees'`
 
 The `alist2dsl` command uses Swift to first create an intermediate `'DSL smoke driver'` which takes roughly 6 seconds longer. But I do like the option to generate the DSL where the structure of the Stan model is clearly labeled and the input data file checked.
 

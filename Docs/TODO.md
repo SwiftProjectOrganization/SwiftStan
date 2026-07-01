@@ -2,6 +2,10 @@
 
 Outstanding issues and deferred work — items not yet implemented.
 
+## General
+
+- Change the `<Stan_Cases>` being set by an environment variable approach to a settable path.
+
 ## Alist parser gaps
 
 - **Alist-side `start = list(...)` / `constraints = list(...)` syntax.** No parser/lowering support yet — McElreath `.alist.R` files can't express per-prior start or constraint overrides; users must author in Swift DSL or hand-edit `<name>.init.json`.
